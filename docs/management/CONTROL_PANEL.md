@@ -13,7 +13,7 @@
 | macOS client | Green | Swift 6 app; three unit tests pass on macOS | Add tests around configuration and PWA discovery |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
 | Installation | Green | Fresh GitHub clone passed doctor and all seven tests on 2026-09-04 | Verify full install on a second Mac/account before binary release |
-| Brand | Decision needed | Strategy and three directions are documented | Owner selects A, B, or C before final assets |
+| Brand | Review needed | Signal Buddy concept baseline generated and stored | Owner approves or requests one focused change before final assets |
 | Distribution | Yellow | Local ad-hoc build works | Developer ID signing/notarization remains future work |
 | Repository | In progress | Local standalone Git repository initialized | Create and verify public GitHub remote |
 
@@ -70,7 +70,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | Milestone | Status | Done when |
 |---|---|---|
 | V0 repository baseline | In progress | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
-| V0 brand baseline | Waiting on owner | one direction is selected; SVG/PNG/ICNS/menu-bar assets and rules are committed |
+| V0 brand baseline | Review | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
@@ -83,6 +83,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 4. **Navigation:** event URL is authoritative; discover the Edge PWA dynamically by Hub origin.
 5. **Hub integration:** ship a documented patch while keeping local deployment details outside the generic project.
 6. **License:** AGPL-3.0 to remain compatible with the included HAPI-derived integration.
+7. **Brand direction:** Signal Buddy — a minimal coral task-complete pager character with a bell clapper and mint completion sparkle.
 
 ## 7. Verification gate
 
