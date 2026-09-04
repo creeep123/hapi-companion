@@ -28,7 +28,7 @@ Publish the existing working HAPI Companion prototype as a reproducible, agent-i
 - [x] Exactly one canonical integration branch (`main`) is recorded.
 - [x] HAPI patch baseline, migration level, rollback requirements, and API contract are recorded.
 - [x] Sensitive systems are mapped without exposing secrets.
-- [ ] Doctor and unit tests pass from the standalone tree.
+- [x] Doctor and all seven unit tests pass from a fresh clone of remote `main`.
 - [ ] Patch applies cleanly to the documented HAPI baseline and targeted/full tests pass.
 - [ ] Brand direction is selected and the complete asset package passes visual checks.
 - [ ] A clean commit is pushed to and read back from `creeep123/hapi-companion`.

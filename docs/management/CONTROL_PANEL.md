@@ -12,7 +12,7 @@
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
 | macOS client | Green | Swift 6 app; three unit tests pass on macOS | Add tests around configuration and PWA discovery |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
-| Installation | Yellow | Local installer and non-secret doctor exist | Verify on a clean second Mac/account |
+| Installation | Green | Fresh GitHub clone passed doctor and all seven tests on 2026-09-04 | Verify full install on a second Mac/account before binary release |
 | Brand | Decision needed | Strategy and three directions are documented | Owner selects A, B, or C before final assets |
 | Distribution | Yellow | Local ad-hoc build works | Developer ID signing/notarization remains future work |
 | Repository | In progress | Local standalone Git repository initialized | Create and verify public GitHub remote |
@@ -71,7 +71,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 |---|---|---|
 | V0 repository baseline | In progress | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
 | V0 brand baseline | Waiting on owner | one direction is selected; SVG/PNG/ICNS/menu-bar assets and rules are committed |
-| V0.1 clean-machine install | Ready | an agent installs from README on a second environment without undocumented knowledge |
+| V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
@@ -96,6 +96,8 @@ git apply --check integrations/hapi/hapi-companion.patch  # from documented clea
 ```
 
 The first public baseline additionally requires a clean Git tree, a reachable GitHub remote, and visual identity approval.
+
+Latest fresh-clone verification: remote `main` at `daa9416d8ab020681908c4e05abc3dcfe71a404b` passed `scripts/doctor.sh` and all seven unit tests on 2026-09-04.
 
 ## 8. Do not do
 
