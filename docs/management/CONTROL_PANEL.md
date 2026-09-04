@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-05
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.1.0 is release-candidate ready. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and locally verified.
+**Current posture:** v0.1.0 is published. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and verified from both a fresh clone and downloaded GitHub release assets.
 
 ## 1. Current status
 
@@ -14,8 +14,8 @@
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
-| Distribution | Yellow | Reproducible universal ad-hoc build and release payload work | Developer ID signing/notarization remains future work |
-| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, README verified | Publish v0.1.0 tag and release assets |
+| Distribution | Yellow | v0.1.0 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
+| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, release v0.1.0 verified | Maintain release provenance |
 
 ## 2. Product boundary
 
@@ -61,7 +61,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | HAPI integration baseline | `tiann/hapi@d3d4fd1706564782e9a58b917df4e0677f65051f` |
 | Compatible HAPI line | 0.29.0 reference baseline |
 | Current local production app | `~/Applications/HAPI Companion.app` |
-| Public release artifact | v0.1.0 payload built locally; GitHub publication pending |
+| Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.1.0` |
 | Rollback for local app | reinstall the previously known-good app bundle |
 | Hub rollback | prior Hub binary/container plus pre-v26 database backup |
 
@@ -69,7 +69,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 
 | Milestone | Status | Done when |
 |---|---|---|
-| V0 repository baseline | Release candidate | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
+| V0 repository baseline | Done | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
 | V0 brand baseline | Done | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
@@ -96,9 +96,9 @@ xcodebuild -project HapiCompanion.xcodeproj -scheme HapiCompanion \
 git apply --check integrations/hapi/hapi-companion.patch  # from documented clean HAPI baseline
 ```
 
-The first public baseline additionally requires a clean pushed Git tree and verified GitHub tag/release assets.
+The v0.1.0 tag targets `2752fa5ad9fb7b8515ba27d35535a914a8e19259`. All four downloaded release files passed the published `SHA256SUMS.txt`; the app archive is universal (`arm64` and `x86_64`) and its ad-hoc signature verifies.
 
-Latest fresh-clone verification: remote `main` at `daa9416d8ab020681908c4e05abc3dcfe71a404b` passed `scripts/doctor.sh` and all seven unit tests on 2026-09-04.
+Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a914a8e19259` passed `scripts/doctor.sh`, brand regeneration/checksums, and all thirteen unit tests on 2026-09-05.
 
 ## 8. Do not do
 
@@ -114,5 +114,5 @@ Latest fresh-clone verification: remote `main` at `daa9416d8ab020681908c4e05abc3
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed release | clean-machine install | v0.1.0 publication | — | working native delivery |
+| signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
 | upstream Hub proposal | — | — | — | Control Panel and Signal Buddy brand |

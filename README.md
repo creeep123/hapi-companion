@@ -4,6 +4,8 @@
 
 <p align="center"><strong>Hear completion. Return exactly where the work happened.</strong></p>
 
+<p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.1.0">Download v0.1.0</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
+
 Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
 
 HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.

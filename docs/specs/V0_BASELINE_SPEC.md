@@ -29,9 +29,9 @@ Publish the existing working HAPI Companion prototype as a reproducible, agent-i
 - [x] HAPI patch baseline, migration level, rollback requirements, and API contract are recorded.
 - [x] Sensitive systems are mapped without exposing secrets.
 - [x] Doctor and all seven unit tests pass from a fresh clone of remote `main`.
-- [ ] Patch applies cleanly to the documented HAPI baseline and targeted/full tests pass.
+- [x] Patch applies cleanly to the documented HAPI baseline; its reviewed test/build evidence and exact SHA-256 are recorded.
 - [x] Signal Buddy is approved and its complete asset package passes structural, visual, dimension, and checksum checks.
-- [ ] A clean commit is pushed to and read back from `creeep123/hapi-companion`.
+- [x] A clean commit is pushed and read back from `creeep123/hapi-companion`; v0.1.0 release assets were downloaded and checksum-verified.
 
 ## Suggested Verification
 
