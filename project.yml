@@ -1,0 +1,43 @@
+name: HapiCompanion
+options:
+  bundleIdPrefix: io.github.creeep123
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+targets:
+  HapiCompanion:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.creeep123.hapicompanion
+        PRODUCT_NAME: HAPI Companion
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: HAPI Companion
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: HAPI Companion uses Microsoft Edge automation only to focus your installed HAPI PWA and open the completed session.
+    scheme:
+      testTargets:
+        - HapiCompanionTests
+  HapiCompanionTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: HapiCompanion
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.creeep123.hapicompanion.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HAPI Companion.app/Contents/MacOS/HAPI Companion"
+        BUNDLE_LOADER: "$(TEST_HOST)"

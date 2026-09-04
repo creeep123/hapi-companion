@@ -1,0 +1,121 @@
+# HAPI Companion
+
+Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
+
+HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.
+
+> Project status: working reference implementation for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
+
+## Why it exists
+
+Browser/PWA notifications are easy to miss on macOS: sound behavior depends on browser and OS policy, background delivery is inconsistent, and opening a notification does not reliably target an already-open PWA window. HAPI Companion owns only the desktop-notification job and solves all three problems natively:
+
+- **Visible:** a native Notification Center banner.
+- **Audible:** an app-owned sound, independent of Web Push sound policy.
+- **Actionable:** clicking opens the event's exact `/sessions/<id>` route.
+- **PWA-aware:** when an Edge-installed HAPI PWA is already open, the app raises and navigates that window instead of creating another one.
+- **Lightweight:** one long-lived SSE connection; no database or HTTP polling loop.
+
+## Agent quick start
+
+This repository is intentionally installable by a coding agent. Give the agent this instruction:
+
+```text
+Clone https://github.com/creeep123/hapi-companion into ~/develop/hapi-companion.
+Read AGENTS.md and README.md. Verify that HAPI CLI is logged in and that the Hub
+has the Companion integration. Run ./scripts/doctor.sh, then ./install-local.sh.
+Do not print or copy ~/.hapi/settings.json or any token. Report every failed check.
+```
+
+Or install manually:
+
+```bash
+git clone https://github.com/creeep123/hapi-companion.git ~/develop/hapi-companion
+cd ~/develop/hapi-companion
+./scripts/doctor.sh
+./install-local.sh
+```
+
+### Prerequisites
+
+- macOS 14 or newer
+- Xcode command-line tools / Xcode
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) available as `xcodegen`
+- HAPI CLI installed, logged in, and connected to the intended Hub
+- `~/.hapi/settings.json` containing the CLI's `apiUrl` and `cliApiToken`
+- a Hub built with the Companion integration in [`integrations/hapi`](integrations/hapi/README.md)
+- Microsoft Edge with the HAPI site installed as a PWA for same-window reuse (optional)
+
+The installer builds locally, places `HAPI Companion.app` in `~/Applications`, launches it, and asks macOS to register it as a login item. On first launch:
+
+1. Allow **Notifications**.
+2. Keep notification style set to **Banners** or **Alerts**, with sounds enabled.
+3. The first time you click a task notification, allow HAPI Companion to control Microsoft Edge. This automation permission is used only to focus and navigate the installed HAPI PWA.
+
+## How it works
+
+```text
+coding agent finishes
+        │
+        ▼
+HAPI Hub durable outbox ── SSE ──► HAPI Companion
+        ▲                              │
+        └──────── explicit ACK ────────┤
+                                       ├─ native banner
+                                       ├─ bundled sound
+                                       └─ exact session URL → existing Edge PWA
+```
+
+The app reads the existing HAPI CLI settings only for initial pairing. It exchanges the CLI credential for a device-scoped token and stores that token in macOS Keychain. The SSE stream supports durable replay, explicit acknowledgement, reconnect backoff, and local event-ID deduplication.
+
+## Verification
+
+```bash
+./scripts/doctor.sh
+xcodegen generate
+xcodebuild -project HapiCompanion.xcodeproj -scheme HapiCompanion \
+  -destination 'platform=macOS' -derivedDataPath .build \
+  CODE_SIGNING_ALLOWED=NO test
+
+log stream --predicate 'subsystem == "io.github.creeep123.hapicompanion"' --level info
+```
+
+Use the menu-bar bell to test the bundled sound or a local notification. A real end-to-end test requires a HAPI session to complete after the Companion stream is connected.
+
+## Exact-session behavior
+
+For Edge PWAs, Companion discovers the installed app dynamically from `CrAppModeShortcutURL`; it does not hard-code a user's Edge application ID or Hub domain. On notification click it finds an existing HAPI window, raises the matching PWA, waits for Edge's app-mode restoration, and only then navigates that same window to the event URL.
+
+If no installed PWA exists, Companion falls back to an Edge app-mode window, then to the default browser.
+
+## Hub compatibility
+
+HAPI Companion requires the durable notification outbox and three routes supplied by the included patch: device registration, SSE events, and explicit ACK. See [`integrations/hapi/README.md`](integrations/hapi/README.md) for the exact baseline, patch workflow, tests, and deployment boundary. Never apply the patch directly to production without reviewing and testing the resulting HAPI tree.
+
+## Security and privacy
+
+- CLI credentials are never committed or copied into this repository.
+- The device credential is scoped to Companion and stored in Keychain.
+- Notification events are isolated by HAPI namespace and Companion installation.
+- ACKs are validated against namespace, sequence, and event ID.
+- Logs contain truncated IDs and status messages, not tokens.
+- Apple Events automation is limited to finding and navigating the matching Edge HAPI window.
+
+## Project documentation
+
+- [Control Panel](docs/management/CONTROL_PANEL.md)
+- [Product and architecture](docs/PRODUCT.md)
+- [Brand directions](docs/brand/BRAND_DIRECTIONS.md)
+- [Hub integration](integrations/hapi/README.md)
+- [Contributing](CONTRIBUTING.md)
+
+## Current limitations
+
+- macOS only.
+- Existing-window targeting currently supports Microsoft Edge PWAs.
+- Local ad-hoc builds re-pair after replacement. A public binary release should use Developer ID signing and notarization.
+- The Hub integration is maintained as a patch until it is accepted upstream or published as a maintained HAPI fork.
+
+## License
+
+GNU Affero General Public License v3.0. HAPI Companion is an independent community project and is not presented as an official HAPI release.
