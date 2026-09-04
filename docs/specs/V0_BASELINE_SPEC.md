@@ -30,7 +30,7 @@ Publish the existing working HAPI Companion prototype as a reproducible, agent-i
 - [x] Sensitive systems are mapped without exposing secrets.
 - [x] Doctor and all seven unit tests pass from a fresh clone of remote `main`.
 - [ ] Patch applies cleanly to the documented HAPI baseline and targeted/full tests pass.
-- [ ] Brand direction is selected and the complete asset package passes visual checks.
+- [x] Signal Buddy is approved and its complete asset package passes structural, visual, dimension, and checksum checks.
 - [ ] A clean commit is pushed to and read back from `creeep123/hapi-companion`.
 
 ## Suggested Verification

@@ -1,0 +1,14 @@
+:root {
+  --hapi-companion-coral: #f25562;
+  --hapi-companion-coral-dark: #dc4454;
+  --hapi-companion-mint: #42c89a;
+  --hapi-companion-canvas: #fff8f8;
+  --hapi-companion-surface: #ffffff;
+  --hapi-companion-ink: #281b2d;
+  --hapi-companion-ink-muted: #655869;
+  --hapi-companion-success: #16805e;
+  --hapi-companion-warning: #9a5a00;
+  --hapi-companion-critical: #b42336;
+  --hapi-companion-radius-control: 12px;
+  --hapi-companion-radius-panel: 20px;
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" role="img" aria-label="HAPI Companion menu bar icon">
+  <defs><mask id="cut"><rect width="36" height="36" fill="white"/><path d="M9.2 17.7a3 3 0 0 1 4.6 0M21.7 17.7a3 3 0 0 1 4.6 0" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round"/></mask></defs>
+  <path d="M15 26h6v3a3 3 0 0 1-6 0z" fill="#000"/>
+  <rect x="3" y="7" width="30" height="21" rx="8" fill="#000" mask="url(#cut)"/>
+  <path d="m29 3 1.2 2.8L33 7l-2.8 1.2L29 11l-1.2-2.8L25 7l2.8-1.2z" fill="#000"/>
+</svg>

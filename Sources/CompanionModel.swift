@@ -153,15 +153,16 @@ final class CompanionModel {
     }
 
     func openEventURL(_ value: String, fallbackSessionId: String) {
-        let configuredHubURL = try? CompanionConfiguration.load().hubURL
-        let eventURL = URL(string: value)
-        let hubURL = eventURL.flatMap(Self.originURL) ?? configuredHubURL
-        guard let hubURL,
-              let url = eventURL ?? URL(string: "/sessions/\(fallbackSessionId)", relativeTo: hubURL)?.absoluteURL else {
+        guard let configuredHubURL = try? CompanionConfiguration.load().hubURL,
+              let resolved = CompanionURLResolver.resolve(
+                eventURL: value,
+                sessionId: fallbackSessionId,
+                configuredHubURL: configuredHubURL
+              ) else {
             status = "会话地址无效；请检查 HAPI CLI 配置"
             return
         }
-        sessionOpener.open(url: url, hubOrigin: hubURL) { [weak self] result in
+        sessionOpener.open(url: resolved.target, hubOrigin: resolved.hubOrigin) { [weak self] result in
             Task { @MainActor in
                 switch result {
                 case .success(let destination): self?.status = "已通过 \(destination) 打开会话"
@@ -171,11 +172,4 @@ final class CompanionModel {
         }
     }
 
-    private static func originURL(for url: URL) -> URL? {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        components.path = ""
-        components.query = nil
-        components.fragment = nil
-        return components.url
-    }
 }

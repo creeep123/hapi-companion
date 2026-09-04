@@ -1,6 +1,6 @@
 # HAPI Companion brand directions
 
-Status: **Signal Buddy selected; representative visual baseline awaiting approval**.
+Status: **Signal Buddy approved on 2026-09-05; production asset system completed**.
 
 ## Foundation
 
@@ -19,7 +19,7 @@ A tiny friendly task-complete pager: one coral rounded body, a deep-aubergine no
 - Second read: the clapper means sound; the sparkle means done; the screen means agent status.
 - Strength: compact silhouette, recognizable at small sizes, playful without becoming childish.
 - Risk to test: the body must stay distinct from a television or robot vacuum at 16–32 px.
-- Representative baseline: [`concepts/signal-buddy-v1.png`](concepts/signal-buddy-v1.png)
+- Representative baseline: [`../../brand/reference/signal-buddy-v1.png`](../../brand/reference/signal-buddy-v1.png)
 - Baseline checksum: `SHA-256 f4398f441c3a2dace07c517d3cec7ef0c861e11ffefb6362e96c1a74aa0816ce`
 
 ## Rejected direction — Conversation Chime
@@ -36,7 +36,7 @@ A location/return arrow wrapping a small HAPI completion dot.
 - Strength: emphasizes exact-session return, the product's hardest feature.
 - Risk: sounds more navigational than audible.
 
-## Proposed system after baseline approval
+## Approved system
 
 - Primary coral: `#F25562`
 - Warm canvas: `#FFF8F8`
@@ -44,4 +44,4 @@ A location/return arrow wrapping a small HAPI completion dot.
 - Success mint: `#42C89A`
 - Type: San Francisco for product UI; Inter or system sans for repository documentation
 
-After the representative baseline is approved, Signal Buddy will receive production SVG masters, macOS `.appiconset`/`.icns`, monochrome menu-bar assets, PNG exports, usage rules, and checksums. The generated PNG is a concept, not a production vector master. Trademark availability and formal legal clearance are not claimed by the GitHub name search.
+Signal Buddy now includes production SVG masters, macOS `.appiconset`/`.icns`, monochrome menu-bar assets, PNG exports, tokens, usage rules, a manifest, and checksums. The generated PNG remains a reference concept rather than a production vector master. Trademark availability and formal legal clearance are not claimed by the GitHub name search.

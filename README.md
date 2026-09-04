@@ -1,10 +1,14 @@
 # HAPI Companion
 
+<p align="center"><img src="brand/exports/hapi-companion-app-icon-1024.png" width="160" alt="HAPI Companion Signal Buddy app icon"></p>
+
+<p align="center"><strong>Hear completion. Return exactly where the work happened.</strong></p>
+
 Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
 
 HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.
 
-> Project status: working reference implementation for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
+> Project status: v0.1 source-first developer release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
 
 ## Why it exists
 
@@ -35,6 +39,8 @@ cd ~/develop/hapi-companion
 ./scripts/doctor.sh
 ./install-local.sh
 ```
+
+Tagged releases also include an ad-hoc signed universal preview build, but it is not Apple-notarized. For security and predictable macOS permissions, the source installer above is the recommended path.
 
 ### Prerequisites
 
@@ -106,6 +112,7 @@ HAPI Companion requires the durable notification outbox and three routes supplie
 - [Control Panel](docs/management/CONTROL_PANEL.md)
 - [Product and architecture](docs/PRODUCT.md)
 - [Brand directions](docs/brand/BRAND_DIRECTIONS.md)
+- [Brand guidelines and asset library](docs/brand/BRAND_GUIDELINES.md)
 - [Hub integration](integrations/hapi/README.md)
 - [Contributing](CONTRIBUTING.md)
 

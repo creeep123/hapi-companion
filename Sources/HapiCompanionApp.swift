@@ -5,7 +5,7 @@ struct HapiCompanionApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("HAPI Companion", systemImage: "bell.badge") {
+        MenuBarExtra("HAPI Companion", image: "MenuBarIcon") {
             CompanionMenu()
                 .environment(appDelegate.model)
         }

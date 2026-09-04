@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="HAPI Companion Signal Buddy monochrome mark">
+  <defs><mask id="eyes"><rect width="512" height="512" fill="white"/><path d="M166 248a30 30 0 0 1 48 0M298 248a30 30 0 0 1 48 0" fill="none" stroke="black" stroke-width="18" stroke-linecap="round"/></mask></defs>
+  <g fill="#281B2D" mask="url(#eyes)">
+    <path d="M218 370h76v46a38 38 0 0 1-76 0z"/>
+    <rect x="62" y="92" width="388" height="304" rx="104"/>
+  </g>
+  <path d="m401 73 13 30 30 13-30 13-13 30-13-30-30-13 30-13z" fill="#281B2D"/>
+</svg>

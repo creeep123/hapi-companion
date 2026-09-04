@@ -7,6 +7,8 @@ PRODUCT="$DERIVED/Build/Products/Release/HAPI Companion.app"
 DEST="$HOME/Applications/HAPI Companion.app"
 
 cd "$ROOT"
+"$ROOT/scripts/doctor.sh"
+"$ROOT/scripts/generate-brand-assets.sh"
 xcodegen generate
 xcodebuild \
   -project HapiCompanion.xcodeproj \

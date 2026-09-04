@@ -1,0 +1,20 @@
+file,category,format,dimensions_or_mode,status,intended_use,source_or_license_note
+brand/logo/signal-buddy-mark.svg,logo,SVG,512x512 vector,approved-master,default symbol,original project geometry AGPL-3.0
+brand/logo/signal-buddy-mark-mono-dark.svg,logo,SVG,512x512 vector,approved-master,single-color on light backgrounds,original project geometry AGPL-3.0
+brand/logo/signal-buddy-mark-mono-light.svg,logo,SVG,512x512 vector,approved-master,reverse mark on dark backgrounds,original project geometry AGPL-3.0
+brand/logo/hapi-companion-horizontal.svg,logo,SVG,1200x320 vector plus system text,approved-derived,wide repository layouts,original geometry and system font stack
+brand/exports/hapi-companion-horizontal-1200.png,logo,PNG,1200x320 RGBA,approved-derived,wide repository preview,generated from horizontal SVG
+brand/app-icon/signal-buddy-app-icon.svg,app-icon,SVG,1024x1024 vector,approved-master,macOS icon source,original project geometry AGPL-3.0
+brand/app-icon/signal-buddy-app-icon-small.svg,app-icon,SVG,64x64 vector,approved-master,small-size macOS icon source,original project geometry AGPL-3.0
+brand/exports/hapi-companion-app-icon-1024.png,app-icon,PNG,1024x1024 RGBA,approved-derived,preview and profile image,generated from app icon SVG
+brand/exports/hapi-companion-app-icon-small-64.png,app-icon,PNG,64x64 RGBA,approved-derived,small-size preview and icon source,generated from small app icon SVG
+brand/exports/HAPI Companion.icns,app-icon,ICNS,multi-resolution,approved-derived,manual macOS packaging,generated from app icon SVG
+brand/menu-bar/signal-buddy-menubar.svg,icon,SVG,36x36 vector,approved-master,macOS menu-bar template,original project geometry AGPL-3.0
+brand/exports/signal-buddy-menubar-18.png,icon,PNG,18x18 RGBA,approved-derived,1x menu bar,generated from menu-bar SVG
+brand/exports/signal-buddy-menubar-36.png,icon,PNG,36x36 RGBA,approved-derived,2x menu bar,generated from menu-bar SVG
+brand/exports/signal-buddy-mark-1024.png,logo,PNG,1024x1024 RGBA,approved-derived,transparent symbol export,generated from mark SVG
+brand/tokens/brand-tokens.json,tokens,JSON,sRGB hex and semantic values,approved-master,portable brand tokens,original project data AGPL-3.0
+brand/tokens/brand-tokens.css,tokens,CSS,sRGB hex and CSS custom properties,approved-derived,web documentation,generated from approved token values
+brand/reference/signal-buddy-v1.png,reference,PNG,1254x1254 RGBA,reference,approved visual direction baseline,AI-generated concept not a vector master
+brand/preview/signal-buddy-brand-board.png,reference,PNG,1600x1040 sRGB,approved-derived,brand family preview board,assembled from approved project assets
+brand/source/GENERATION_NOTES.md,source,Markdown,text,reference,concept provenance and reproducibility notes,project documentation

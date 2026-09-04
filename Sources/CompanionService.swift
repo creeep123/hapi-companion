@@ -83,9 +83,15 @@ actor CompanionService {
     }
 
     private func ensureCredential() async throws -> CompanionCredential {
-        if let existing = try keychain.load() { return existing }
         let configuration = try CompanionConfiguration.load()
         let hubURL = configuration.hubURL
+        if let existing = try keychain.load() {
+            if CompanionConfiguration.sameOrigin(existing.hubURL, hubURL) {
+                return existing
+            }
+            CompanionLog.info("configured Hub changed; replacing device credential")
+            try keychain.delete()
+        }
 
         var authRequest = URLRequest(url: hubURL.appending(path: "api/auth"))
         authRequest.httpMethod = "POST"
@@ -105,7 +111,8 @@ actor CompanionService {
         register.httpMethod = "POST"
         register.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         register.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        register.httpBody = try JSONSerialization.data(withJSONObject: ["installationId": installationId, "name": "MacAir"])
+        let deviceName = Host.current().localizedName ?? "Mac"
+        register.httpBody = try JSONSerialization.data(withJSONObject: ["installationId": installationId, "name": deviceName])
         let (registerData, registerResponse) = try await session.data(for: register)
         guard let registerHTTP = registerResponse as? HTTPURLResponse, registerHTTP.statusCode == 200 else {
             let status = (registerResponse as? HTTPURLResponse)?.statusCode ?? 0

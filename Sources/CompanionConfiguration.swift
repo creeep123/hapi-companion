@@ -33,9 +33,26 @@ struct CompanionConfiguration: Sendable {
         }
         guard let settings = try? JSONDecoder().decode(CLISettings.self, from: data),
               let hubURL = URL(string: settings.apiUrl),
+              ["http", "https"].contains(hubURL.scheme?.lowercased() ?? ""),
+              hubURL.host != nil,
               !settings.cliApiToken.isEmpty else {
             throw CompanionConfigurationError.invalidCLISettings
         }
         return CompanionConfiguration(hubURL: hubURL, cliAPIToken: settings.cliApiToken)
+    }
+
+    static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+            && lhs.host?.lowercased() == rhs.host?.lowercased()
+            && effectivePort(lhs) == effectivePort(rhs)
+    }
+
+    private static func effectivePort(_ url: URL) -> Int? {
+        if let port = url.port { return port }
+        switch url.scheme?.lowercased() {
+        case "http": return 80
+        case "https": return 443
+        default: return nil
+        }
     }
 }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">HAPI Companion Signal Buddy</title>
+  <desc id="desc">A friendly coral notification companion with a dark screen, smiling eyes, bell clapper, and mint completion sparkle.</desc>
+  <path fill="#DC4454" d="M218 370h76v46a38 38 0 0 1-76 0z"/>
+  <rect x="62" y="92" width="388" height="304" rx="104" fill="#F25562"/>
+  <rect x="112" y="136" width="288" height="208" rx="76" fill="#281B2D"/>
+  <path d="M166 248a30 30 0 0 1 48 0" fill="none" stroke="#FFF8F8" stroke-width="18" stroke-linecap="round"/>
+  <path d="M298 248a30 30 0 0 1 48 0" fill="none" stroke="#FFF8F8" stroke-width="18" stroke-linecap="round"/>
+  <path d="m401 73 13 30 30 13-30 13-13 30-13-30-30-13 30-13z" fill="#42C89A" stroke="#FFF8F8" stroke-width="10" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "color": {
+    "brand": { "coral": "#F25562", "coralDark": "#DC4454", "mint": "#42C89A" },
+    "background": { "canvas": "#FFF8F8", "surface": "#FFFFFF", "inverse": "#281B2D" },
+    "text": { "primary": "#281B2D", "secondary": "#655869", "inverse": "#FFF8F8" },
+    "status": { "success": "#16805E", "warning": "#9A5A00", "critical": "#B42336" }
+  },
+  "type": {
+    "family": { "ui": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif", "code": "ui-monospace, 'SF Mono', monospace" },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700 }
+  },
+  "shape": { "radiusSmall": 8, "radiusControl": 12, "radiusPanel": 20 },
+  "space": { "1": 4, "2": 8, "3": 12, "4": 16, "6": 24, "8": 32 }
+}

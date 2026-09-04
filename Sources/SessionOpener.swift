@@ -65,24 +65,18 @@ struct SessionOpener {
                       bundle.object(forInfoDictionaryKey: "CrBundleIdentifier") as? String == "com.microsoft.edgemac",
                       let shortcut = bundle.object(forInfoDictionaryKey: "CrAppModeShortcutURL") as? String,
                       let shortcutURL = URL(string: shortcut),
-                      Self.sameOrigin(shortcutURL, hubOrigin) else { continue }
+                      CompanionConfiguration.sameOrigin(shortcutURL, hubOrigin) else { continue }
                 return app
             }
         }
         return nil
     }
 
-    static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
-        lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
-            && lhs.host?.lowercased() == rhs.host?.lowercased()
-            && lhs.port == rhs.port
-    }
-
     private func findExistingEdgeWindow(
         origin: URL,
         completion: @escaping @Sendable (Bool) -> Void
     ) {
-        let originValue = appleScriptLiteral(origin.absoluteString)
+        let originValue = appleScriptLiteral(originPrefix(origin))
         let source = """
         tell application "Microsoft Edge"
             if not running then return "not-found"
@@ -103,7 +97,7 @@ struct SessionOpener {
         completion: @escaping @Sendable (Bool) -> Void
     ) {
         let target = appleScriptLiteral(url.absoluteString)
-        let originValue = appleScriptLiteral(origin.absoluteString)
+        let originValue = appleScriptLiteral(originPrefix(origin))
         let source = """
         tell application "Microsoft Edge"
             repeat with w in windows
@@ -170,6 +164,10 @@ struct SessionOpener {
         let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+
+    private func originPrefix(_ origin: URL) -> String {
+        origin.absoluteString.hasSuffix("/") ? origin.absoluteString : origin.absoluteString + "/"
     }
 
     private func openEdgeFallback(

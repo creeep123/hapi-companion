@@ -1,21 +1,21 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-04  
+**Last updated:** 2026-09-05
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** The working macOS prototype has been separated from a private HAPI maintenance tree. Core notification delivery works; repository hardening, visual identity approval, and first public baseline are in progress.
+**Current posture:** v0.1.0 is release-candidate ready. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and locally verified.
 
 ## 1. Current status
 
 | Area | Status | Evidence | Next action |
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
-| macOS client | Green | Swift 6 app; three unit tests pass on macOS | Add tests around configuration and PWA discovery |
+| macOS client | Green | Swift 6 universal app; thirteen unit tests pass on macOS | Preserve URL-origin and delivery guarantees |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
-| Installation | Green | Fresh GitHub clone passed doctor and all seven tests on 2026-09-04 | Verify full install on a second Mac/account before binary release |
-| Brand | Review needed | Signal Buddy concept baseline generated and stored | Owner approves or requests one focused change before final assets |
-| Distribution | Yellow | Local ad-hoc build works | Developer ID signing/notarization remains future work |
-| Repository | In progress | Local standalone Git repository initialized | Create and verify public GitHub remote |
+| Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
+| Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
+| Distribution | Yellow | Reproducible universal ad-hoc build and release payload work | Developer ID signing/notarization remains future work |
+| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, README verified | Publish v0.1.0 tag and release assets |
 
 ## 2. Product boundary
 
@@ -61,7 +61,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | HAPI integration baseline | `tiann/hapi@d3d4fd1706564782e9a58b917df4e0677f65051f` |
 | Compatible HAPI line | 0.29.0 reference baseline |
 | Current local production app | `~/Applications/HAPI Companion.app` |
-| Public release artifact | none yet |
+| Public release artifact | v0.1.0 payload built locally; GitHub publication pending |
 | Rollback for local app | reinstall the previously known-good app bundle |
 | Hub rollback | prior Hub binary/container plus pre-v26 database backup |
 
@@ -69,8 +69,8 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 
 | Milestone | Status | Done when |
 |---|---|---|
-| V0 repository baseline | In progress | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
-| V0 brand baseline | Review | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
+| V0 repository baseline | Release candidate | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
+| V0 brand baseline | Done | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
@@ -96,7 +96,7 @@ xcodebuild -project HapiCompanion.xcodeproj -scheme HapiCompanion \
 git apply --check integrations/hapi/hapi-companion.patch  # from documented clean HAPI baseline
 ```
 
-The first public baseline additionally requires a clean Git tree, a reachable GitHub remote, and visual identity approval.
+The first public baseline additionally requires a clean pushed Git tree and verified GitHub tag/release assets.
 
 Latest fresh-clone verification: remote `main` at `daa9416d8ab020681908c4e05abc3dcfe71a404b` passed `scripts/doctor.sh` and all seven unit tests on 2026-09-04.
 
@@ -108,11 +108,11 @@ Latest fresh-clone verification: remote `main` at `daa9416d8ab020681908c4e05abc3
 - Do not reintroduce database/HTTP polling.
 - Do not deploy the Hub patch without explicit operator approval, backup, full build, tests, and rollback record.
 - Do not claim official HAPI affiliation, broad-version compatibility, notarization, or trademark clearance without evidence.
-- Do not finalize brand assets before the owner selects a documented visual direction.
+- Do not replace the approved Signal Buddy masters without a documented brand revision.
 
 ## 9. Kanban
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed release | clean-machine install | GitHub baseline | brand direction | working native delivery |
-| upstream Hub proposal | config/PWA tests | documentation hardening | — | Control Panel |
+| signed release | clean-machine install | v0.1.0 publication | — | working native delivery |
+| upstream Hub proposal | — | — | — | Control Panel and Signal Buddy brand |
