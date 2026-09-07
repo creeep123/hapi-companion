@@ -1,7 +1,7 @@
 # V0.2 acceptance and handover
 
 Date: 2026-09-08. Scope: docs/specs/V0_2_NOTIFICATION_SETTINGS.md A1–A9.
-Status: implementation and automated review complete; live installation/Hub deployment and human sensory acceptance pending. Published production baseline remains v0.1.0. Implementation commit: `6d228a8`; draft PR #1 targets canonical `main`. Later provenance-only documentation commits do not change the tested implementation.
+Status: local V0.2 installation complete; VM Hub deployment and human sensory acceptance pending. Published release baseline remains v0.1.0. Feature PR #1, clean replacement fix PR #2, and login-item repair PR #3 are merged into canonical `main` at `cb6b48a`.
 
 ## Evidence matrix
 
@@ -27,9 +27,9 @@ Status: implementation and automated review complete; live installation/Hub depl
 
 Local logs: `/tmp/hapi-companion-v02-swift-final-tests.log`, `/tmp/hapi-companion-v02-universal-build.log`, `/tmp/hapi-companion-v02-preview-build.log`; Hub log paths recorded in integration README. Reproducible commands and expected behavior are committed; temporary machine logs are not published.
 
-## Human/production gate — not run automatically
+## Deployment progress and remaining human gate
 
-The repository instructions require explicit approval for production changes. The user approved feature implementation, not deployment. Existing installed Companion and Hub were therefore left intact.
+The user explicitly authorized local installation and VM Hub deployment on 2026-09-08. Local V0.2.0 is installed from clean merged source: strict ad-hoc signature verification passes, the executable is universal, SSE reconnects with HTTP 200, and the settings window reports connected. The installer now stages and verifies a fresh bundle before replacement, preventing stale debug files from invalidating its seal. Login-item stale registration is repaired after replacement. The VM Hub remains unchanged while its safe deployment window and exact baseline candidate are prepared.
 
 1. Approve the feature PR and identify the production Hub source/artifact/environment before deployment; compare that tree with the clean reference so local patches are not overwritten. Record its current SHA, artifact and rollback backup. The Companion repo does not currently declare a canonical deployment provider/environment.
 2. With that operator approval, prepare/test the exact Hub deployment candidate containing catalog/duration support and deploy the complete Hub + embedded Web assets together. The cumulative patch is for clean baseline, not a patch-over-patch installer.
