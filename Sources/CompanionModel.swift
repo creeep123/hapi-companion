@@ -97,7 +97,15 @@ final class CompanionModel {
     private func enableLoginItem() {
         do {
             let service = SMAppService.mainApp
-            if service.status == .notRegistered { try service.register() }
+            if service.status == .notFound {
+                // Replacing an ad-hoc signed local build can leave Background Task
+                // Management pointing at the old bundle instance. Clear that stale
+                // registration before registering the newly installed bundle.
+                try? service.unregister()
+            }
+            if service.status == .notRegistered || service.status == .notFound {
+                try service.register()
+            }
             switch service.status {
             case .enabled: loginItemStatus = "登录时自动启动：已启用"
             case .requiresApproval: loginItemStatus = "登录时自动启动：需要在系统设置批准"
