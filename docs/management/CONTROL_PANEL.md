@@ -1,16 +1,26 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-08
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.1.0 is published. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and verified from both a fresh clone and downloaded GitHub release assets.
+
+## Active iteration — V0.2 notification settings
+
+**Ready for human acceptance; not deployed.** The approved single-window settings are implemented: select real HAPI conversations or title keywords, skip short foreground tasks, and schedule quiet hours. Settings autosave locally. The menu-bar entry is retained explicitly and reopening the app opens settings as a fallback.
+
+Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. The actual native preview supports search, selection, keyword edits and quiet-mode switching. Existing installed app/Hub and public v0.1.0 remain unchanged.
+
+Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). Work branch: `feature/v0.2-notification-settings`; canonical integration remains `main`. Review candidate: [draft PR #1](https://github.com/creeep123/hapi-companion/pull/1), implementation commit `6d228a8`.
+
+**Next human decision:** review the native window and authorize the exact Hub/local-app installation environment before real notification acceptance. The repository has no canonical production provider declared. Full conversation lists and measured task duration need the new Hub patch, which has not been deployed. Preserve prior app/Hub artifacts and record rollback before replacement. No updater work is included; it remains in `hapi-safe-updater`.
 
 ## 1. Current status
 
 | Area | Status | Evidence | Next action |
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
-| macOS client | Green | Swift 6 universal app; thirteen unit tests pass on macOS | Preserve URL-origin and delivery guarantees |
+| macOS client | Green | v0.1 baseline: Swift 6 universal app; thirteen tests pass. V0.2 candidate: 29 tests pass | Preserve URL-origin and delivery guarantees |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
@@ -26,7 +36,8 @@
 - native banner and app-owned sound;
 - click-through to the exact HAPI session;
 - reuse of an existing Microsoft Edge HAPI PWA window;
-- agent-readable installation and operational documentation.
+- agent-readable installation and operational documentation;
+- one lightweight settings window with per-session/keyword rules, task duration filtering and quiet hours (V0.2).
 
 ### Out of scope
 
@@ -72,7 +83,8 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0 repository baseline | Done | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
 | V0 brand baseline | Done | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
-| V0.2 Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
+| V0.2 notification settings | Ready for human | implementation/reviews complete; approve deployment environment and verify real Mac notification flow |
+| Future Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -104,7 +116,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 
 - Do not commit credentials, settings files, databases, or Keychain exports.
 - Do not silently alter the configured Hub or copy deployment-specific domains into source.
-- Do not ACK an event before both notification submission and sound playback start succeed.
+- ACK only after the required delivery succeeds, or a user rule intentionally suppresses and locally records the event. Sound is not required in explicitly silent mode; transient delivery failures never ACK.
 - Do not reintroduce database/HTTP polling.
 - Do not deploy the Hub patch without explicit operator approval, backup, full build, tests, and rollback record.
 - Do not claim official HAPI affiliation, broad-version compatibility, notarization, or trademark clearance without evidence.
@@ -115,4 +127,4 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
-| upstream Hub proposal | — | — | — | Control Panel and Signal Buddy brand |
+| upstream Hub proposal | — | — | V0.2 settings candidate / human runtime acceptance | Control Panel and Signal Buddy brand |

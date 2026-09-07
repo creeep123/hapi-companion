@@ -7,35 +7,97 @@ import ServiceManagement
 @Observable
 final class CompanionModel {
     private let sessionOpener = SessionOpener()
-    private let service = CompanionService()
+    private let service: CompanionService
     private var activeSound: NSSound?
-    private let deliveredEventIdsKey = "deliveredCompanionEventIds"
+    private let defaults: UserDefaults
+    private let preview: Bool
+    private var started = false
+    private var currentHubURL: URL?
+    let settings: ReminderSettingsStore
     var status = "正在启动 HAPI Companion…"
     var loginItemStatus = "正在检查登录启动…"
+    var permissionStatus = "正在检查通知权限…"
+    var notificationAllowed = false
+    var catalog: [CompanionSession] = []
+    var catalogLoading = false
+    var catalogError: String?
+    var catalogLoaded = false
+    var durationSupported = false
+    var lastAction: String?
+
+    init(defaults: UserDefaults = .standard, service: CompanionService = CompanionService(), preview: Bool = false) {
+        self.defaults = defaults
+        self.service = service
+        self.preview = preview
+        settings = ReminderSettingsStore(defaults: defaults)
+    }
+
+    func start() async {
+        guard !started else { return }
+        started = true
+        if preview {
+            configure(hubURL: URL(string: "https://preview.invalid")!)
+            status = "设计预览 · 未连接真实 Hub"
+            loginItemStatus = "预览模式，不注册登录项"
+            notificationAllowed = true
+            permissionStatus = "预览模式"
+            catalog = [
+                CompanionSession(id: "preview-1", title: "HAPI Companion 项目接管与维护", machineName: "MacAir"),
+                CompanionSession(id: "preview-2", title: "小火胃 管理", machineName: "MacAir"),
+                CompanionSession(id: "preview-3", title: "站群总管", machineName: "MacAir"),
+                CompanionSession(id: "preview-4", title: "外链提交工程师", machineName: "VM")
+            ]
+            settings.preferences.scope = .specified
+            settings.preferences.selectedSessionIDs = ["preview-1", "preview-3"]
+            settings.preferences.keywords = ["Companion", "站群"]
+            settings.preferences.durationEnabled = true
+            settings.preferences.quietEnabled = true
+            durationSupported = true
+            catalogLoaded = true
+            return
+        }
+        do { configure(hubURL: try CompanionConfiguration.load().hubURL) }
+        catch { status = error.localizedDescription }
+        enableLoginItem()
+        // Permission failure must not prevent user-rule suppressions from being ACKed.
+        await service.start(onEvent: { [weak self] event, _, hubURL in
+            guard let self else { return false }
+            return await self.deliver(event, hubURL: hubURL)
+        }, onStatus: { [weak self] status in
+            await MainActor.run { self?.status = status }
+        })
+        await requestNotificationPermission()
+    }
+
+    private func configure(hubURL: URL) {
+        if let currentHubURL, CompanionConfiguration.sameOrigin(currentHubURL, hubURL) { return }
+        currentHubURL = hubURL
+        settings.configure(hubURL: hubURL)
+        catalog = []
+        catalogLoaded = false
+        durationSupported = false
+        catalogError = nil
+    }
 
     func requestNotificationPermission() async {
+        guard !preview else { return }
         do {
-            let granted = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound])
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            UserDefaults.standard.set(settings.authorizationStatus.rawValue, forKey: "notificationAuthorizationStatus")
-            UserDefaults.standard.set(settings.soundSetting.rawValue, forKey: "notificationSoundSetting")
-            status = granted ? "通知权限已启用" : "通知权限未启用"
-            if granted {
-                enableLoginItem()
-                startService()
-            }
-        } catch {
-            status = "通知权限请求失败：\(error.localizedDescription)"
-        }
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+            await refreshPermission()
+        } catch { permissionStatus = "通知权限请求失败：\(error.localizedDescription)" }
+    }
+
+    func refreshPermission() async {
+        guard !preview else { return }
+        let value = await UNUserNotificationCenter.current().notificationSettings()
+        notificationAllowed = value.authorizationStatus == .authorized && value.alertSetting == .enabled
+        permissionStatus = notificationAllowed ? "通知权限已启用" : "通知横幅未启用，请前往系统设置开启"
     }
 
     private func enableLoginItem() {
         do {
             let service = SMAppService.mainApp
-            if service.status == .notRegistered {
-                try SMAppService.mainApp.register()
-            }
+            if service.status == .notRegistered { try service.register() }
             switch service.status {
             case .enabled: loginItemStatus = "登录时自动启动：已启用"
             case .requiresApproval: loginItemStatus = "登录时自动启动：需要在系统设置批准"
@@ -43,133 +105,105 @@ final class CompanionModel {
             case .notRegistered: loginItemStatus = "登录时自动启动：未启用"
             @unknown default: loginItemStatus = "登录时自动启动：状态未知"
             }
-        } catch {
-            // Notification delivery remains available for the current login;
-            // expose the failure without crashing the menu-bar agent.
-            loginItemStatus = "登录启动未启用：\(error.localizedDescription)"
-        }
+        } catch { loginItemStatus = "登录启动未启用：\(error.localizedDescription)" }
     }
 
-    private func startService() {
-        Task {
-            await service.start(onEvent: { [weak self] event, _ in
-                guard let self else { return false }
-                return await self.deliver(event)
-            }, onStatus: { [weak self] status in
-                await MainActor.run { self?.status = status }
-            })
-        }
-    }
-
-    private func deliver(_ event: CompanionEvent) async -> Bool {
-        if deliveredEventIds.contains(event.eventId) {
-            CompanionLog.info("deduplicated event=\(event.eventId.prefix(8))")
-            status = "正在确认已显示的通知：\(event.sessionName)"
-            return true
-        }
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        guard settings.authorizationStatus == .authorized,
-              settings.alertSetting == .enabled else {
-            CompanionLog.error("notification unavailable auth=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue)")
-            status = "通知横幅已关闭；请在系统设置中启用后重试"
-            return false
-        }
-        let content = UNMutableNotificationContent()
-        content.title = event.title
-        content.body = event.body
-        content.userInfo = ["sessionId": event.sessionId, "url": event.url]
+    func refreshCatalog() async {
+        guard !preview, !catalogLoading else { return }
+        catalogLoading = true
+        defer { catalogLoading = false }
         do {
-            try await UNUserNotificationCenter.current().add(UNNotificationRequest(
-                identifier: event.eventId,
-                content: content,
-                trigger: nil
-            ))
-            guard playSound() else {
-                status = "提示音播放失败；通知将在稍后重试"
-                return false
+            let result = try await service.fetchCatalog()
+            // Never replace rows for a Hub whose configuration changed during this request.
+            let configured = try CompanionConfiguration.load().hubURL
+            guard CompanionConfiguration.sameOrigin(configured, result.hubURL) else { return }
+            configure(hubURL: result.hubURL)
+            var seen = Set<String>()
+            catalog = result.catalog.sessions.filter { seen.insert($0.id).inserted }
+                .sorted { $0.updatedAt > $1.updatedAt }
+            durationSupported = result.catalog.capabilities.turnDuration
+            catalogLoaded = true
+            catalogError = nil
+        } catch { catalogError = error.localizedDescription }
+    }
+
+    private func deliver(_ event: CompanionEvent, hubURL: URL) async -> Bool {
+        configure(hubURL: hubURL)
+        let decision = ReminderPolicy.evaluate(event: event, preferences: settings.preferences, now: Date(), calendar: .current)
+        let ledger = CompanionHandledEvents(defaults: defaults)
+        let result = await ReminderDelivery.process(
+            event: event, decision: decision, alreadyHandled: ledger.contains(event.eventId, hubURL: hubURL),
+            submitBanner: { [self] in
+                await refreshPermission()
+                guard notificationAllowed else { throw CompanionServiceError.deliveryDeferred }
+                let content = UNMutableNotificationContent()
+                content.title = event.title
+                content.body = event.body
+                content.userInfo = ["sessionId": event.sessionId, "url": event.url]
+                try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: event.eventId, content: content, trigger: nil))
+            },
+            playSound: { [self] in playSound() },
+            remember: { id in ledger.remember(id, hubURL: hubURL) }
+        )
+        if result {
+            CompanionLog.info("event handled event=\(event.eventId.prefix(8))")
+            switch decision {
+            case .suppress(let reason): lastAction = "已跳过提醒：\(reason)"
+            case .bannerOnly: lastAction = "已静音提醒：\(event.sessionName)"
+            case .notifyWithSound: lastAction = "已提醒：\(event.sessionName)"
             }
-            rememberDelivered(event.eventId)
-            CompanionLog.info("notification delivered event=\(event.eventId.prefix(8))")
-            status = "已通知：\(event.sessionName)"
-            return true
-        } catch {
-            status = "通知失败：\(error.localizedDescription)"
-            return false
+        } else {
+            lastAction = notificationAllowed ? "提醒未完成，将在重连后重试" : permissionStatus
         }
-    }
-
-    private var deliveredEventIds: Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: deliveredEventIdsKey) ?? [])
-    }
-
-    private func rememberDelivered(_ eventId: String) {
-        var ids = UserDefaults.standard.stringArray(forKey: deliveredEventIdsKey) ?? []
-        ids.removeAll { $0 == eventId }
-        ids.append(eventId)
-        if ids.count > 256 { ids.removeFirst(ids.count - 256) }
-        UserDefaults.standard.set(ids, forKey: deliveredEventIdsKey)
+        return result
     }
 
     func openLoginItemSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
-            NSWorkspace.shared.open(url)
-        }
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") { NSWorkspace.shared.open(url) }
+    }
+
+    func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
     }
 
     @discardableResult
     func playSound() -> Bool {
         guard let url = Bundle.main.url(forResource: "HapiComplete", withExtension: "aiff"),
               let sound = NSSound(contentsOf: url, byReference: true) else {
-            status = "找不到内置提示音"
+            lastAction = "找不到内置提示音"
             return false
         }
         activeSound?.stop()
         activeSound = sound
-        let started = sound.play()
-        status = started ? "已播放原生提示音" : "提示音播放失败"
-        return started
+        return sound.play()
     }
 
     func sendTestNotification() async {
+        guard !preview else { lastAction = "设计预览不发送真实通知"; return }
+        await refreshPermission()
+        guard notificationAllowed else { lastAction = permissionStatus; return }
         let content = UNMutableNotificationContent()
         content.title = "HAPI Companion 测试"
-        content.body = "声音和原生通知工作正常"
-
-        // Sound is played explicitly so behavior does not depend on the
-        // browser notification implementation. Keep content.sound nil to
-        // avoid double playback if macOS behavior changes.
-        playSound()
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
+        content.body = "这是一条测试提醒，不受会话筛选和勿扰规则限制。"
         do {
-            try await UNUserNotificationCenter.current().add(request)
-            status = "测试通知已发送"
-        } catch {
-            status = "测试通知失败：\(error.localizedDescription)"
-        }
+            try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+            lastAction = playSound() ? "测试提醒已发送" : "测试横幅已发送，但提示音播放失败"
+        } catch { lastAction = "测试提醒失败：\(error.localizedDescription)" }
     }
 
     func openEventURL(_ value: String, fallbackSessionId: String) {
         guard let configuredHubURL = try? CompanionConfiguration.load().hubURL,
-              let resolved = CompanionURLResolver.resolve(
-                eventURL: value,
-                sessionId: fallbackSessionId,
-                configuredHubURL: configuredHubURL
-              ) else {
-            status = "会话地址无效；请检查 HAPI CLI 配置"
+              let resolved = CompanionURLResolver.resolve(eventURL: value, sessionId: fallbackSessionId, configuredHubURL: configuredHubURL) else {
+            lastAction = "会话地址无效；请检查 HAPI CLI 配置"
             return
         }
         sessionOpener.open(url: resolved.target, hubOrigin: resolved.hubOrigin) { [weak self] result in
             Task { @MainActor in
                 switch result {
-                case .success(let destination): self?.status = "已通过 \(destination) 打开会话"
-                case .failure(let error): self?.status = "跳转失败：\(error.localizedDescription)"
+                case .success(let destination): self?.lastAction = "已通过 \(destination) 打开会话"
+                case .failure(let error): self?.lastAction = "跳转失败：\(error.localizedDescription)"
                 }
             }
         }
     }
-
 }
