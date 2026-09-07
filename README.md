@@ -12,6 +12,10 @@ HAPI Companion is a tiny menu-bar app for people who run coding agents through H
 
 > Project status: v0.1 source-first developer release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
 
+## v0.2 implementation candidate
+
+The next version adds a single native settings window for real-session selection, title keywords, short-task filtering and quiet hours. It is implemented on `feature/v0.2-notification-settings` and awaits the manual acceptance/deployment gates; v0.1.0 remains the public release. See [v0.2 release notes](docs/releases/v0.2.0.md), [acceptance evidence](docs/management/V0_2_ACCEPTANCE.md) and the [Hub contract](integrations/hapi/README.md). The updated cumulative Hub patch is required for the conversation catalog and measured turn duration.
+
 ## Why it exists
 
 Browser/PWA notifications are easy to miss on macOS: sound behavior depends on browser and OS policy, background delivery is inconsistent, and opening a notification does not reliably target an already-open PWA window. HAPI Companion owns only the desktop-notification job and solves all three problems natively:

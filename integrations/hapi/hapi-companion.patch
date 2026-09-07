@@ -37,10 +37,11 @@ index 00000000..ba69d6ab
 +}
 diff --git a/hub/src/notifications/companionNotificationChannel.ts b/hub/src/notifications/companionNotificationChannel.ts
 new file mode 100644
-index 00000000..366465e8
+index 00000000..8f743e49
 --- /dev/null
 +++ b/hub/src/notifications/companionNotificationChannel.ts
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,47 @@
++import type { NotificationSendContext } from './notificationSendContext'
 +import type { Session } from '../sync/syncEngine'
 +import type { SessionEndReason } from '@hapi/protocol'
 +import type { NotificationChannel, TaskNotification } from './notificationTypes'
@@ -53,8 +54,8 @@ index 00000000..366465e8
 +        private readonly composer: NativeNotificationComposer
 +    ) {}
 +
-+    async sendReady(session: Session): Promise<void> {
-+        this.publish(session, this.composer.composeReady(session))
++    async sendReady(session: Session, ctx?: NotificationSendContext): Promise<void> {
++        this.publish(session, this.composer.composeReady(session), ctx)
 +    }
 +
 +    async sendPermissionRequest(session: Session): Promise<void> {
@@ -65,13 +66,15 @@ index 00000000..366465e8
 +        this.publish(session, this.composer.composeTask(session, notification))
 +    }
 +
-+    async sendSessionCompletion(session: Session, reason: SessionEndReason): Promise<void> {
-+        this.publish(session, this.composer.composeSessionCompletion(session, reason))
++    async sendSessionCompletion(session: Session, reason: SessionEndReason, ctx?: NotificationSendContext): Promise<void> {
++        this.publish(session, this.composer.composeSessionCompletion(session, reason), ctx)
 +    }
 +
-+    private publish(session: Session, composed: ReturnType<NativeNotificationComposer['composeReady']>): void {
++    private publish(session: Session, composed: ReturnType<NativeNotificationComposer['composeReady']>, ctx?: NotificationSendContext): void {
 +        this.broker.publish(session.namespace, {
 +            version: 1,
++            ...(ctx?.durationMs !== undefined && Number.isSafeInteger(ctx.durationMs) && ctx.durationMs >= 0
++                ? { durationMs: ctx.durationMs } : {}),
 +            kind: composed.type,
 +            title: composed.title,
 +            body: composed.body,
@@ -127,10 +130,10 @@ index 9d4d8ad5..b2e7ee97 100644
       * Build the title/body for a `ready` notification.
       *
 diff --git a/hub/src/notifications/notificationHub.test.ts b/hub/src/notifications/notificationHub.test.ts
-index c2844388..10d06a4c 100644
+index c2844388..fd00866b 100644
 --- a/hub/src/notifications/notificationHub.test.ts
 +++ b/hub/src/notifications/notificationHub.test.ts
-@@ -245,4 +245,26 @@ describe('NotificationHub', () => {
+@@ -245,4 +245,103 @@ describe('NotificationHub', () => {
  
          hub.stop()
      })
@@ -156,12 +159,100 @@ index c2844388..10d06a4c 100644
 +        expect(channel.sessionCompletions).toHaveLength(0)
 +        hub.stop()
 +    })
++})
++
++describe('Companion immutable duration dispatch', () => {
++    it('freezes ready duration before an earlier channel awaits and survives durable replay', async () => {
++        const { Store } = await import('../store')
++        const { CompanionNotificationBroker } = await import('./companionNotificationBroker')
++        const { CompanionNotificationChannel } = await import('./companionNotificationChannel')
++        const { NativeNotificationComposer } = await import('./nativeNotificationComposer')
++        const store = new Store(':memory:')
++        const broker = new CompanionNotificationBroker(store)
++        const engine = new FakeSyncEngine()
++        const first = new StubChannel()
++        let release!: () => void
++        const gate = new Promise<void>((resolve) => { release = resolve })
++        first.sendReady = async () => { await gate }
++        const hub = new NotificationHub(engine as unknown as SyncEngine,
++            [first, new CompanionNotificationChannel(broker, new NativeNotificationComposer())], { readyCooldownMs: 0 })
++        const started = Date.now() - 60000
++        const session = createSession({ thinking: true, activeTurnStartedAt: started })
++        engine.setSession(session)
++        engine.emit({ type: 'session-updated', sessionId: session.id })
++        engine.emit({ type: 'message-received', sessionId: session.id,
++            message: { id: 'ready', seq: 1, localId: null, createdAt: Date.now(),
++                content: { type: 'event', data: { type: 'ready' } } } })
++        session.activeTurnStartedAt = Date.now()
++        engine.emit({ type: 'session-updated', sessionId: session.id })
++        release()
++        await sleep(5)
++        const replay = store.companionNotifications.listAfter('default', 0)
++        expect(replay).toHaveLength(1)
++        expect(replay[0].payload.durationMs).toBeGreaterThanOrEqual(60000)
++        expect(replay[0].payload.durationMs).toBeLessThan(61000)
++        expect(store.companionNotifications.listAfter('default', 0)[0].payload.durationMs).toBe(replay[0].payload.durationMs)
++        hub.stop()
++        store.close()
++    })
++
++    it('retains duration when inactive update clears start before generic session completion', async () => {
++        const durations: Array<number | undefined> = []
++        const channel: NotificationChannel = {
++            sendReady: async () => {}, sendPermissionRequest: async () => {}, sendTaskNotification: async () => {},
++            sendSessionCompletion: async (_session, _reason, ctx) => { durations.push(ctx?.durationMs) }
++        }
++        const engine = new FakeSyncEngine()
++        const hub = new NotificationHub(engine as unknown as SyncEngine, [channel])
++        const session = createSession({ thinking: true, activeTurnStartedAt: Date.now() - 30000 })
++        engine.setSession(session)
++        engine.emit({ type: 'session-updated', sessionId: session.id })
++        session.thinking = false
++        session.active = false
++        session.activeTurnStartedAt = null
++        engine.emit({ type: 'session-updated', sessionId: session.id })
++        engine.emit({ type: 'session-ended', sessionId: session.id, reason: 'completed' })
++        await sleep(1)
++        expect(durations[0]).toBeGreaterThanOrEqual(30000)
++        expect(durations[0]).toBeLessThan(31000)
++        hub.stop()
++    })
++
++    it('does not attribute unassociated background task duration to a foreground turn', async () => {
++        const durations: Array<number | undefined> = []
++        const channel: NotificationChannel = {
++            sendReady: async () => {}, sendPermissionRequest: async () => {},
++            sendTaskNotification: async (_session, _task, ctx) => { durations.push(ctx?.durationMs) }
++        }
++        const engine = new FakeSyncEngine()
++        const hub = new NotificationHub(engine as unknown as SyncEngine, [channel])
++        const session = createSession({ thinking: true, activeTurnStartedAt: Date.now() - 60000 })
++        engine.setSession(session)
++        engine.emit({ type: 'session-updated', sessionId: session.id })
++        engine.emit({ type: 'message-received', sessionId: session.id,
++            message: { id: 'task', seq: 1, localId: null, createdAt: Date.now(),
++                content: { type: 'output', data: { type: 'system', subtype: 'task_notification', status: 'completed', summary: 'Child done' } } } })
++        await sleep(1)
++        expect(durations).toEqual([undefined])
++        hub.stop()
++    })
  })
 diff --git a/hub/src/notifications/notificationHub.ts b/hub/src/notifications/notificationHub.ts
-index f9d627e1..f63a9564 100644
+index f9d627e1..c947ff3d 100644
 --- a/hub/src/notifications/notificationHub.ts
 +++ b/hub/src/notifications/notificationHub.ts
-@@ -11,6 +11,7 @@ export class NotificationHub {
+@@ -2,15 +2,18 @@ import type { Session, SyncEngine, SyncEvent } from '../sync/syncEngine'
+ import type { SessionEndReason } from '@hapi/protocol'
+ import type { NotificationChannel, NotificationHubOptions, TaskNotification } from './notificationTypes'
+ import type { NotificationSendContext } from './notificationSendContext'
++import { TurnDurationTracker } from './turnDurationTracker'
+ import { extractMessageEventType, extractTaskNotification } from './eventParsing'
+ 
+ export class NotificationHub {
++    private readonly turnDurations = new TurnDurationTracker()
+     private readonly channels: NotificationChannel[]
+     private readonly readyCooldownMs: number
+     private readonly permissionDebounceMs: number
      private readonly lastKnownRequests: Map<string, Set<string>> = new Map()
      private readonly notificationDebounce: Map<string, NodeJS.Timeout> = new Map()
      private readonly lastReadyNotificationAt: Map<string, number> = new Map()
@@ -169,23 +260,33 @@ index f9d627e1..f63a9564 100644
      private unsubscribeSyncEvents: (() => void) | null = null
  
      constructor(
-@@ -38,13 +39,14 @@ export class NotificationHub {
+@@ -38,13 +41,16 @@ export class NotificationHub {
          this.notificationDebounce.clear()
          this.lastKnownRequests.clear()
          this.lastReadyNotificationAt.clear()
 +        this.lastTaskCompletionAt.clear()
++        this.turnDurations.clear()
      }
  
      private handleSyncEvent(event: SyncEvent): void {
          if ((event.type === 'session-updated' || event.type === 'session-added') && event.sessionId) {
              const session = this.syncEngine.getSession(event.sessionId)
++            if (session) this.turnDurations.observe(session)
              if (!session || !session.active) {
 -                this.clearSessionState(event.sessionId)
 +                this.clearSessionState(event.sessionId, false)
                  return
              }
              this.checkForPermissionNotification(session)
-@@ -82,7 +84,7 @@ export class NotificationHub {
+@@ -53,6 +59,7 @@ export class NotificationHub {
+ 
+         if (event.type === 'session-removed' && event.sessionId) {
+             this.clearSessionState(event.sessionId)
++            this.turnDurations.remove(event.sessionId)
+             return
+         }
+ 
+@@ -82,7 +89,7 @@ export class NotificationHub {
          }
      }
  
@@ -194,7 +295,7 @@ index f9d627e1..f63a9564 100644
          const existingTimer = this.notificationDebounce.get(sessionId)
          if (existingTimer) {
              clearTimeout(existingTimer)
-@@ -90,6 +92,7 @@ export class NotificationHub {
+@@ -90,6 +97,7 @@ export class NotificationHub {
          }
          this.lastKnownRequests.delete(sessionId)
          this.lastReadyNotificationAt.delete(sessionId)
@@ -202,7 +303,7 @@ index f9d627e1..f63a9564 100644
      }
  
      private getNotifiableSession(sessionId: string): Session | null {
-@@ -170,6 +173,9 @@ export class NotificationHub {
+@@ -170,6 +178,9 @@ export class NotificationHub {
              return
          }
  
@@ -212,7 +313,7 @@ index f9d627e1..f63a9564 100644
          await this.notifyTask(session, notification)
      }
  
-@@ -179,7 +185,19 @@ export class NotificationHub {
+@@ -179,11 +190,23 @@ export class NotificationHub {
              return
          }
  
@@ -233,6 +334,155 @@ index f9d627e1..f63a9564 100644
      }
  
      private async notifyReady(session: Session): Promise<void> {
+-        const ctx: NotificationSendContext = { nativeGate: { sent: false } }
++        const ctx: NotificationSendContext = { nativeGate: { sent: false }, durationMs: this.turnDurations.complete(session.id) }
+         for (const channel of this.channels) {
+             try {
+                 await channel.sendReady(session, ctx)
+@@ -216,12 +239,13 @@ export class NotificationHub {
+     }
+ 
+     private async notifySessionCompletion(session: Session, reason: SessionEndReason): Promise<void> {
++        const ctx: NotificationSendContext = { durationMs: this.turnDurations.complete(session.id) }
+         for (const channel of this.channels) {
+             if (typeof channel.sendSessionCompletion !== 'function') {
+                 continue
+             }
+             try {
+-                await channel.sendSessionCompletion(session, reason)
++                await channel.sendSessionCompletion(session, reason, ctx)
+             } catch (error) {
+                 console.error('[NotificationHub] Failed to send session completion notification:', error)
+             }
+diff --git a/hub/src/notifications/notificationSendContext.ts b/hub/src/notifications/notificationSendContext.ts
+index baef669a..5fe5321a 100644
+--- a/hub/src/notifications/notificationSendContext.ts
++++ b/hub/src/notifications/notificationSendContext.ts
+@@ -10,5 +10,7 @@ export type NativeDeliveryGate = {
+ }
+ 
+ export type NotificationSendContext = {
++    /** Immutable current foreground turn duration; absent when unassociated/unknown. */
++    durationMs?: number
+     nativeGate?: NativeDeliveryGate
+ }
+diff --git a/hub/src/notifications/notificationTypes.ts b/hub/src/notifications/notificationTypes.ts
+index 6130cf30..a5d1120a 100644
+--- a/hub/src/notifications/notificationTypes.ts
++++ b/hub/src/notifications/notificationTypes.ts
+@@ -11,7 +11,7 @@ export type NotificationChannel = {
+     sendReady: (session: Session, ctx?: NotificationSendContext) => Promise<void>
+     sendPermissionRequest: (session: Session, ctx?: NotificationSendContext) => Promise<void>
+     sendTaskNotification: (session: Session, notification: TaskNotification, ctx?: NotificationSendContext) => Promise<void>
+-    sendSessionCompletion?: (session: Session, reason: SessionEndReason) => Promise<void>
++    sendSessionCompletion?: (session: Session, reason: SessionEndReason, ctx?: NotificationSendContext) => Promise<void>
+ }
+ 
+ export type NotificationHubOptions = {
+diff --git a/hub/src/notifications/turnDurationTracker.test.ts b/hub/src/notifications/turnDurationTracker.test.ts
+new file mode 100644
+index 00000000..68061a98
+--- /dev/null
++++ b/hub/src/notifications/turnDurationTracker.test.ts
+@@ -0,0 +1,49 @@
++import { describe, expect, it } from 'bun:test'
++import type { Session } from '../sync/syncEngine'
++import { TurnDurationTracker } from './turnDurationTracker'
++
++function state(thinking: boolean, activeTurnStartedAt?: number | null): Session {
++    return { id: 'one', thinking, activeTurnStartedAt } as Session
++}
++
++describe('turn duration evidence', () => {
++    it('freezes completion and retains it across heartbeat/end ordering', () => {
++        const tracker = new TurnDurationTracker()
++        tracker.observe(state(true, 1000), 1000)
++        tracker.observe(state(true, 1000), 2000)
++        expect(tracker.complete('one', 5000)).toBe(4000)
++        tracker.observe(state(false, null), 6000)
++        expect(tracker.complete('one', 9000)).toBe(4000)
++    })
++    it('captures heartbeat-ended duration before a later completion', () => {
++        const tracker = new TurnDurationTracker()
++        tracker.observe(state(true, 1000), 1000)
++        tracker.observe(state(false, null), 2000)
++        expect(tracker.complete('one', 9000)).toBe(1000)
++    })
++    it('starts a fresh identity even while thinking remains true', () => {
++        const tracker = new TurnDurationTracker()
++        tracker.observe(state(true, 1000), 1000)
++        expect(tracker.complete('one', 9000)).toBe(8000)
++        tracker.observe(state(true, 10000), 10000)
++        expect(tracker.complete('one', 11000)).toBe(1000)
++        tracker.observe(state(false), 12000)
++        tracker.observe(state(true, 13000), 13000)
++        expect(tracker.complete('one', 14000)).toBe(1000)
++    })
++    it('never invents a start from heartbeat, conversation age, restart or malformed time', () => {
++        for (const start of [undefined, null, NaN, Infinity, -1, 50000]) {
++            const tracker = new TurnDurationTracker()
++            tracker.observe(state(true, start), 1000)
++            tracker.observe(state(false), 2000)
++            expect(tracker.complete('one', 3000)).toBeUndefined()
++        }
++        const tracker = new TurnDurationTracker()
++        tracker.observe(state(true, 1000), 1000)
++        tracker.remove('one')
++        expect(tracker.complete('one', 2000)).toBeUndefined()
++        tracker.observe(state(true, 1000), 1000)
++        tracker.clear()
++        expect(tracker.complete('one', 2000)).toBeUndefined()
++    })
++})
+diff --git a/hub/src/notifications/turnDurationTracker.ts b/hub/src/notifications/turnDurationTracker.ts
+new file mode 100644
+index 00000000..b6d36035
+--- /dev/null
++++ b/hub/src/notifications/turnDurationTracker.ts
+@@ -0,0 +1,43 @@
++import type { Session } from '../sync/syncEngine'
++
++type Turn = { thinking: boolean; start?: number; duration?: number }
++
++/** In-memory evidence only: unknown starts after reconnect/restart stay unknown. */
++export class TurnDurationTracker {
++    private readonly turns = new Map<string, Turn>()
++
++    observe(session: Session, now = Date.now()): void {
++        const old = this.turns.get(session.id)
++        const candidate = session.activeTurnStartedAt
++        const start = typeof candidate === 'number' && Number.isSafeInteger(candidate)
++            && candidate >= 0 && candidate <= now ? candidate : undefined
++        if (session.thinking) {
++            if (!old?.thinking || (start !== undefined && start !== old.start)) {
++                this.turns.set(session.id, { thinking: true, start })
++            }
++        } else if (old?.thinking) {
++            this.turns.set(session.id, {
++                thinking: false, start: old.start,
++                duration: old.duration ?? this.elapsed(old.start, now)
++            })
++        } else if (!old) {
++            this.turns.set(session.id, { thinking: false })
++        }
++    }
++
++    /** Completion freezes the turn before asynchronous channel fan-out. */
++    complete(sessionId: string, now = Date.now()): number | undefined {
++        const turn = this.turns.get(sessionId)
++        if (!turn) return undefined
++        turn.duration ??= this.elapsed(turn.start, now)
++        return turn.duration
++    }
++
++    private elapsed(start: number | undefined, now: number): number | undefined {
++        const duration = start === undefined ? NaN : now - start
++        return Number.isSafeInteger(duration) && duration >= 0 ? duration : undefined
++    }
++
++    remove(sessionId: string): void { this.turns.delete(sessionId) }
++    clear(): void { this.turns.clear() }
++}
 diff --git a/hub/src/startHub.ts b/hub/src/startHub.ts
 index d5fd94cc..2ba6d01f 100644
 --- a/hub/src/startHub.ts
@@ -278,11 +528,11 @@ index d5fd94cc..2ba6d01f 100644
      // Start the bot if configured
 diff --git a/hub/src/store/companionNotificationStore.test.ts b/hub/src/store/companionNotificationStore.test.ts
 new file mode 100644
-index 00000000..adcf65b4
+index 00000000..2a9488b7
 --- /dev/null
 +++ b/hub/src/store/companionNotificationStore.test.ts
 @@ -0,0 +1,92 @@
-+import { describe, expect, it } from 'vitest'
++import { describe, expect, it } from 'bun:test'
 +import { Store } from './index'
 +
 +describe('CompanionNotificationStore', () => {
@@ -841,11 +1091,11 @@ index 7dd95179..4e727880 100644
  })
 diff --git a/hub/src/store/migration-v25.test.ts b/hub/src/store/migration-v25.test.ts
 new file mode 100644
-index 00000000..f0564860
+index 00000000..6e9e4fcf
 --- /dev/null
 +++ b/hub/src/store/migration-v25.test.ts
 @@ -0,0 +1,45 @@
-+import { afterEach, describe, expect, it } from 'vitest'
++import { afterEach, describe, expect, it } from 'bun:test'
 +import { Database } from 'bun:sqlite'
 +import { mkdtempSync, rmSync } from 'node:fs'
 +import { join } from 'node:path'
@@ -891,10 +1141,10 @@ index 00000000..f0564860
 +    })
 +})
 diff --git a/hub/src/store/types.ts b/hub/src/store/types.ts
-index d22773b8..7c5ae9cf 100644
+index d22773b8..7a4c9a32 100644
 --- a/hub/src/store/types.ts
 +++ b/hub/src/store/types.ts
-@@ -89,6 +89,41 @@ export type StoredFcmDevice = {
+@@ -89,6 +89,42 @@ export type StoredFcmDevice = {
      updatedAt: number
  }
  
@@ -910,6 +1160,7 @@ index d22773b8..7c5ae9cf 100644
 +}
 +
 +export type CompanionNotificationPayload = {
++    durationMs?: number
 +    version: 1
 +    eventId: string
 +    createdAt: number
@@ -938,18 +1189,19 @@ index d22773b8..7c5ae9cf 100644
      entryId: string
 diff --git a/hub/src/web/routes/companion.test.ts b/hub/src/web/routes/companion.test.ts
 new file mode 100644
-index 00000000..4e6bb1d0
+index 00000000..c96bb6e6
 --- /dev/null
 +++ b/hub/src/web/routes/companion.test.ts
-@@ -0,0 +1,228 @@
-+import { describe, expect, it } from 'vitest'
+@@ -0,0 +1,267 @@
++import type { Session } from '../../sync/syncEngine'
++import { describe, expect, it } from 'bun:test'
 +import { Hono } from 'hono'
 +import { Store } from '../../store'
 +import { CompanionNotificationBroker } from '../../notifications/companionNotificationBroker'
 +import { createCompanionDeviceRoutes, createCompanionRegistrationRoutes } from './companion'
 +import type { WebAppEnv } from '../middleware/auth'
 +
-+async function readEventIds(response: Response, count: number): Promise<{ ids: number[]; reader: { cancel(): Promise<void> } }> {
++async function readEventIds(response: Response, count: number): Promise<{ ids: number[]; text: string; reader: { cancel(): Promise<void> } }> {
 +    const reader = response.body!.getReader()
 +    const ids: number[] = []
 +    let buffered = ''
@@ -960,7 +1212,7 @@ index 00000000..4e6bb1d0
 +        const matches = [...buffered.matchAll(/^id: (\d+)$/gm)]
 +        ids.splice(0, ids.length, ...matches.map((match) => Number(match[1])))
 +    }
-+    return { ids, reader }
++    return { ids, text: buffered, reader }
 +}
 +
 +describe('companion routes', () => {
@@ -1060,6 +1312,7 @@ index 00000000..4e6bb1d0
 +        const { device, token } = store.companionNotifications.registerDevice('alpha', 'MacAir', '11111111-1111-4111-8111-111111111111')
 +        const published = broker.publish('alpha', {
 +            version: 1,
++            durationMs: 123456,
 +            kind: 'session-completed',
 +            title: 'Done',
 +            body: 'Finished',
@@ -1078,8 +1331,9 @@ index 00000000..4e6bb1d0
 +            signal: controller.signal
 +        })
 +        expect(response.status).toBe(200)
-+        const { ids, reader } = await readEventIds(response, 1)
++        const { ids, text, reader } = await readEventIds(response, 1)
 +        expect(ids).toEqual([published.seq])
++        expect(text).toContain('"durationMs":123456')
 +        controller.abort()
 +        await reader.cancel().catch(() => undefined)
 +        store.close()
@@ -1170,12 +1424,50 @@ index 00000000..4e6bb1d0
 +        store.close()
 +    })
 +})
++
++
++describe('companion minimal session catalog', () => {
++    it('isolates namespace and projects only title/display fields, including renames', async () => {
++        const store = new Store(':memory:')
++        const { device, token } = store.companionNotifications.registerDevice('alpha', 'Mac', '11111111-1111-4111-8111-111111111111')
++        const alpha = { id: 'a', namespace: 'alpha', updatedAt: 1, active: true,
++            metadata: { name: '项目开发', host: 'My Mac', path: '/private/path' }, agentState: { secret: 'not-public' } } as unknown as Session
++        const beta = { ...alpha, id: 'b', namespace: 'beta' }
++        let requestedNamespace = ''
++        const app = new Hono().route('/companion', createCompanionDeviceRoutes(store, new CompanionNotificationBroker(store), (namespace) => {
++            requestedNamespace = namespace
++            return [alpha, beta]
++        }))
++        const headers = { authorization: `Bearer ${token}`, 'x-hapi-device-id': device.id }
++        expect((await app.request('/companion/sessions')).status).toBe(401)
++        expect((await app.request('/companion/sessions', { headers: { ...headers, authorization: 'Bearer wrong' } })).status).toBe(401)
++        const result = await (await app.request('/companion/sessions?namespace=beta', { headers })).json()
++        expect(requestedNamespace).toBe('alpha')
++        expect(result).toEqual({ capabilities: { turnDuration: true }, sessions: [{ id: 'a', title: '项目开发', machineName: 'My Mac', updatedAt: 1, active: true }] })
++        alpha.metadata!.name = '改名'
++        const renamed = await (await app.request('/companion/sessions', { headers })).json() as { sessions: Array<{ id: string; title: string }> }
++        expect(renamed.sessions[0]).toMatchObject({ id: 'a', title: '改名' })
++        store.companionNotifications.disableDevice('alpha', device.id)
++        expect((await app.request('/companion/sessions', { headers })).status).toBe(401)
++        store.close()
++    })
++
++    it('returns unavailable rather than inventing an empty catalog', async () => {
++        const store = new Store(':memory:')
++        const { device, token } = store.companionNotifications.registerDevice('alpha', 'Mac', '11111111-1111-4111-8111-111111111111')
++        const app = new Hono().route('/companion', createCompanionDeviceRoutes(store, new CompanionNotificationBroker(store)))
++        expect((await app.request('/companion/sessions', { headers: { authorization: `Bearer ${token}`, 'x-hapi-device-id': device.id } })).status).toBe(503)
++        store.close()
++    })
++})
 diff --git a/hub/src/web/routes/companion.ts b/hub/src/web/routes/companion.ts
 new file mode 100644
-index 00000000..a7cf8696
+index 00000000..ba3092e1
 --- /dev/null
 +++ b/hub/src/web/routes/companion.ts
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,164 @@
++import type { Session } from '../../sync/syncEngine'
++import { getSessionName } from '../../notifications/sessionInfo'
 +import { Hono } from 'hono'
 +import { streamSSE } from 'hono/streaming'
 +import { z } from 'zod'
@@ -1215,7 +1507,8 @@ index 00000000..a7cf8696
 +
 +export function createCompanionDeviceRoutes(
 +    store: Store,
-+    broker: CompanionNotificationBroker
++    broker: CompanionNotificationBroker,
++    getSessions?: (namespace: string) => Session[] | undefined
 +): Hono {
 +    const app = new Hono()
 +
@@ -1224,6 +1517,23 @@ index 00000000..a7cf8696
 +        if (!token || !deviceId) return null
 +        return store.companionNotifications.authenticate(deviceId, token)
 +    }
++
++    app.get('/sessions', (c) => {
++        const device = authenticate(c.req.header('authorization'), c.req.header('x-hapi-device-id'))
++        if (!device) return c.json({ error: 'Invalid companion credentials' }, 401)
++        const sessions = getSessions?.(device.namespace)
++        if (!sessions) return c.json({ error: 'Session catalog unavailable' }, 503)
++        return c.json({
++            capabilities: { turnDuration: true },
++            sessions: sessions.filter((session) => session.namespace === device.namespace).map((session) => ({
++                id: session.id,
++                title: getSessionName(session),
++                ...(session.metadata?.host ? { machineName: session.metadata.host } : {}),
++                updatedAt: session.updatedAt,
++                active: session.active
++            }))
++        })
++    })
 +
 +    app.get('/events', (c) => {
 +        const device = authenticate(c.req.header('authorization'), c.req.header('x-hapi-device-id'))
@@ -1321,7 +1631,7 @@ index 00000000..a7cf8696
 +    return app
 +}
 diff --git a/hub/src/web/server.ts b/hub/src/web/server.ts
-index 3444b88c..491632f1 100644
+index 3444b88c..2a751025 100644
 --- a/hub/src/web/server.ts
 +++ b/hub/src/web/server.ts
 @@ -43,6 +43,8 @@ import type { WebSocketData } from '@socket.io/bun-engine'
@@ -1341,15 +1651,16 @@ index 3444b88c..491632f1 100644
  }): Hono<WebAppEnv> {
      const app = new Hono<WebAppEnv>()
  
-@@ -280,6 +283,7 @@ function createWebApp(options: {
+@@ -280,6 +283,8 @@ function createWebApp(options: {
      })
  
      app.route('/cli', createCliRoutes(options.getSyncEngine))
-+    app.route('/companion', createCompanionDeviceRoutes(options.store, options.companionBroker))
++    app.route('/companion', createCompanionDeviceRoutes(options.store, options.companionBroker,
++        (namespace) => options.getSyncEngine()?.getSessionsByNamespace(namespace)))
  
      app.route('/api', createAuthRoutes(options.jwtSecret, options.store))
      app.route('/api', createBindRoutes(options.jwtSecret, options.store))
-@@ -305,6 +309,7 @@ function createWebApp(options: {
+@@ -305,6 +310,7 @@ function createWebApp(options: {
      }))
      app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
      app.route('/api', createDevicesRoutes(options.store))
@@ -1357,7 +1668,7 @@ index 3444b88c..491632f1 100644
      app.route('/api', createVoiceRoutes({ dataDir: configuration.dataDir }))
      // Path is intentionally NOT `/api/events` — that route is the SSE stream.
      app.route('/api', createWorkGraphRoutes(options.store))
-@@ -423,6 +428,7 @@ export async function startWebServer(options: {
+@@ -423,6 +429,7 @@ export async function startWebServer(options: {
      corsOrigins?: string[]
      relayMode?: boolean
      officialWebUrl?: string
@@ -1365,7 +1676,7 @@ index 3444b88c..491632f1 100644
  }): Promise<BunServer<WebSocketData>> {
      const isCompiled = isBunCompiled()
      const embeddedAssetMap = isCompiled ? await loadEmbeddedAssetMap() : null
-@@ -436,7 +442,8 @@ export async function startWebServer(options: {
+@@ -436,7 +443,8 @@ export async function startWebServer(options: {
          corsOrigins: options.corsOrigins,
          embeddedAssetMap,
          relayMode: options.relayMode,
