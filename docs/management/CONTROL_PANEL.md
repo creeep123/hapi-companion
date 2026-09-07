@@ -11,7 +11,7 @@
 
 Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. The actual native preview supports search, selection, keyword edits and quiet-mode switching. Existing installed app/Hub and public v0.1.0 remain unchanged.
 
-Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). Work branch: `feature/v0.2-notification-settings`; canonical integration remains `main`.
+Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). Work branch: `feature/v0.2-notification-settings`; canonical integration remains `main`. Review candidate: [draft PR #1](https://github.com/creeep123/hapi-companion/pull/1), implementation commit `6d228a8`.
 
 **Next human decision:** review the native window and authorize the exact Hub/local-app installation environment before real notification acceptance. The repository has no canonical production provider declared. Full conversation lists and measured task duration need the new Hub patch, which has not been deployed. Preserve prior app/Hub artifacts and record rollback before replacement. No updater work is included; it remains in `hapi-safe-updater`.
 

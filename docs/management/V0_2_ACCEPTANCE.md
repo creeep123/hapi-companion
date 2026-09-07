@@ -1,7 +1,7 @@
 # V0.2 acceptance and handover
 
 Date: 2026-09-08. Scope: docs/specs/V0_2_NOTIFICATION_SETTINGS.md A1–A9.
-Status: implementation and automated review complete; live installation/Hub deployment and human sensory acceptance pending. Published production baseline remains v0.1.0.
+Status: implementation and automated review complete; live installation/Hub deployment and human sensory acceptance pending. Published production baseline remains v0.1.0. Implementation commit: `6d228a8`; draft PR #1 targets canonical `main`. Later provenance-only documentation commits do not change the tested implementation.
 
 ## Evidence matrix
 
@@ -15,7 +15,7 @@ Status: implementation and automated review complete; live installation/Hub depl
 | A6 duration | Hub tracker/channel/route tests | Same-thinking/new start, end-state clearing, unknown start, immutable value during suspended channel, repeated completion, durable SSE replay; child tasks remain unknown |
 | A7 legacy support | Optional tolerant event decoder tests, catalog unsupported tests, visible compatibility UI | Old notifications still work; old Hub cannot provide full catalog or known duration until patch upgraded |
 | A8 regression/build | Swift XCTest and universal build logs; Hub verification report | See final counts below; live OS sound/banner are outside unit-test proof |
-| A9 provenance/review | `.scratch/v0.2/002-plan-review.md`, `003-implementation-review.md`, `004-hub-validation.md`, ADR 0001, release notes and feature branch (PR link recorded after creation) | Independent plan review amendments implemented; two implementation P2 issues fixed and re-reviewed; no confirmed P1/P2 remain; no production deploy or public tag |
+| A9 provenance/review | `.scratch/v0.2/002-plan-review.md`, `003-implementation-review.md`, `004-hub-validation.md`, ADR 0001, release notes and [draft PR #1](https://github.com/creeep123/hapi-companion/pull/1) | Independent plan review amendments implemented; two implementation P2 issues fixed and re-reviewed; no confirmed P1/P2 remain; no production deploy or public tag |
 
 ## Automated checks
 
