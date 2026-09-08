@@ -45,6 +45,8 @@ If asked to deploy, first confirm the intended provider/environment unless `docs
 
 ## Companion / updater coordination rules
 
+- For a fresh installation or repository-link handoff, read `docs/agents/NEW_INSTALL.md` before giving commands. Guide the user through both project roles and verify the requested end-to-end scope; never assume a compatible Hub or active upgrade protection already exists.
+
 - This repository owns `integrations/hapi/hapi-companion.patch`, its API contract and compatibility tests. `hapi-safe-updater` owns patch pins, automatic upgrade gates, deployment execution and rollback implementation. Never add updater implementation here.
 - Before modifying the patch, baseline, contract or compatibility tests, read `integrations/hapi/README.md` → “Patch change and upgrade handoff”.
 - Every patch-content change requires a newly computed SHA-256 and an explicit handoff to the updater owner. Supply the immutable Companion commit, old/new patch hashes, target HAPI baseline, contract/migration changes, test evidence and rollback implications. Do not assume an updater update automatically refreshes its patch pin.

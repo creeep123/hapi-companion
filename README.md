@@ -28,6 +28,8 @@ Browser/PWA notifications are easy to miss on macOS: sound behavior depends on b
 
 ## Agent quick start
 
+**全新 Mac + 自有服务器，且需要后续安全升级：先读 [新环境安装引导](docs/agents/NEW_INSTALL.md)。** 本项目负责提醒；[HAPI Safe Updater](https://github.com/creeep123/hapi-safe-updater) 负责保留 Hub 补丁的安全升级。两个仓库任一入口均应引导 Agent 完成两边配置与验收。下方命令仅适用于已有兼容 Hub 的 Mac 安装。
+
 This repository is intentionally installable by a coding agent. Give the agent this instruction:
 
 ```text
