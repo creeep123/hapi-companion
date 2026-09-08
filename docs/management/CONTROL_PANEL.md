@@ -7,13 +7,15 @@
 
 ## Active iteration — V0.2 notification settings
 
-**Local V0.2 installed; VM Hub deployment in progress.** The approved single-window settings are implemented: select real HAPI conversations or title keywords, skip short foreground tasks, and schedule quiet hours. Settings autosave locally. The menu-bar entry is retained explicitly and reopening the app opens settings as a fallback.
+**Local V0.2 installed; VM Hub V0.2 deployment and session-catalog acceptance completed on 2026-09-08.** The approved single-window settings are implemented: select real HAPI conversations or title keywords, skip short foreground tasks, and schedule quiet hours. Settings autosave locally. The menu-bar entry is retained explicitly and reopening the app opens settings as a fallback.
 
-Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. Local V0.2.0 is installed with a valid ad-hoc seal and healthy SSE connection; the VM Hub and public v0.1.0 release remain unchanged.
+Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. Local V0.2.0 is installed with a valid ad-hoc seal and healthy SSE connection; the VM Hub was subsequently upgraded and its catalog/SSE checks passed; v0.1.0 remains the public release.
 
 Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). Canonical `main` is `cb6b48a`; feature PR #1 and installation fixes PR #2/#3 are merged.
 
-**Next action:** VM deployment waits for fail-closed idle detection, then builds from the exact recovered baseline and switches with the verified database/binary rollback set. Full conversation lists and measured task duration need that Hub patch. Human acceptance then covers sound, visible menu icon and exact Edge PWA navigation. No updater work is included; it remains in `hapi-safe-updater`.
+**Next action:** complete the new-user installation entry in both repositories and verify the missing menu-bar icon on the current Mac. Two old v0.1 application copies have been removed from Applications after preserving a verified compressed rollback archive. Menu-bar visibility remains under runtime investigation; notifications and the session catalog are working. Updater implementation remains in `hapi-safe-updater`.
+
+New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). Acceptance requires either public repository to lead an Agent through Mac Companion, a patched Hub and verified safe-upgrade configuration; an unmerged local document does not meet that requirement.
 
 ## 1. Current status
 
@@ -47,6 +49,14 @@ Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence an
 - Chrome/Safari PWA-window automation in the initial release;
 - a hosted relay service;
 - automatic production Hub patching or deployment.
+
+### Companion 与自动更新项目的长期协作规则
+
+- Companion 负责权威 Hub 补丁、接口约定和兼容性测试；独立 `hapi-safe-updater` 负责自动升级、部署和回滚。
+- 修改补丁后，必须重新计算 SHA-256（用于锁定补丁内容的校验值），把新旧校验值、对应提交、目标 HAPI 版本、测试结果和回滚影响明确交给 updater 负责人；由对方更新 pin（升级器锁定的补丁版本）并重新验收。更新 updater 软件本身不等于已经更新补丁 pin。
+- 对方确认新 pin 和升级验收通过前，不能宣布跨项目交付完成或允许自动升级使用新补丁；未完成的同步必须保留为明确任务。单纯发出消息不算验收完成。
+- 用户于 2026-09-08 确认 updater 已在 `feat/companion-patched-hub-gates` 分支固化门禁，锁定补丁 `2a96be323c0d837793d32fd20fffc44efd6828e6a9263da5ebffcc5cf79e95bd`。该确认不代表分支已经合并或部署；实际运行状态由 updater 项目维护。
+- 具体交接步骤、验收要求和记录模板见 [Hub 集成规则](../../integrations/hapi/README.md#patch-change-and-upgrade-handoff)。本仓库的 Agent 必须遵守 [AGENTS.md](../../AGENTS.md) 中的协作规则。
 
 ## 3. Architecture and sensitive systems
 

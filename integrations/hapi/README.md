@@ -89,3 +89,47 @@ Validation used an isolated worktree at the baseline commit plus this cumulative
 - `git apply --cached --check` against an isolated index loaded from clean baseline: passed. `git diff --check`: passed.
 
 Evidence logs on the validation machine: `/tmp/hapi-companion-v02-hapi-{tests,typecheck,build}.log`, `/tmp/hapi-companion-v02-hub-full.log`, `/tmp/hapi-companion-v02-baseline-web-test.log`, `/tmp/hapi-companion-v02-web-compatible-node.log`, `/tmp/hapi-companion-v02-{shared,relay}.log`. Production endpoint availability, pairing and real macOS delivery still require the approved Hub deployment and device acceptance; this patch has not been deployed.
+
+## Patch change and upgrade handoff
+
+These are required project rules, not an optional release checklist.
+
+### Ownership and current pin
+
+Companion maintains this patch, its contract and compatibility tests. The independent `hapi-safe-updater` project (`/Users/mayuming/develop/hapi-safe-updater`) maintains the upgrade implementation, patch pin, production gates and rollback execution. Updating the updater itself does not automatically change the patch pin.
+
+On 2026-09-08 the updater owner reported the gates recorded on `feat/companion-patched-hub-gates`, pinning `2a96be323c0d837793d32fd20fffc44efd6828e6a9263da5ebffcc5cf79e95bd`. This is an owner-reported branch state, not independent evidence of merge or deployment. The updater repository is authoritative for its current installed state.
+
+### Required steps when the patch changes
+
+1. Record an executable task with the target HAPI baseline and acceptance criteria. Apply the patch to a clean, isolated checkout of that baseline; run the HAPI tests, type checks, build and relevant Companion contract/client tests. Record failures and limitations explicitly.
+2. Compute `shasum -a 256 integrations/hapi/hapi-companion.patch`. Update this README's baseline/hash and relevant specification/release evidence. Bind the patch to an immutable, reviewable Companion commit; retain the prior known-good pin.
+3. Explicitly notify the updater owner through the authorized project handoff channel. Include Companion commit, patch path, old/new SHA-256, target HAPI baseline, contract and migration changes (including “none”), verification results and rollback implications. Current coordination session: `cb66ab68-4731-42ce-98b0-8b0c2b721c74` (“HAPI 自动更新”); use HAPI peer tools, never treat session URLs as filesystem paths.
+4. Request the updater owner to update its pin and rerun the upgrade gates below. Record its acknowledgement, updater commit, acceptance evidence and merge/deployment status in the task. If the owner is unavailable or evidence is pending, retain the previous production pin and leave the integration task open. Sending the message alone does not complete the handoff.
+5. Only report the changed integration ready for automatic production upgrade after the updater owner confirms the new pin and successful acceptance. Production changes still require applicable operator authorization.
+
+A patch change requires a new hash even if its API contract is unchanged. A client-only change with an unchanged patch/contract needs no pin update. A new target HAPI version requires fresh compatibility acceptance even if the patch hash stays the same.
+
+### Required upgrade gates (implemented by updater)
+
+- Verify the pinned patch hash and exact source baseline before building in isolation. A missing patch, hash mismatch, failed application, failed tests or failed build blocks production replacement; never fall back to an unpatched upstream binary.
+- Use a clean, pushed source commit; record source SHA, patch SHA, candidate binary SHA, target HAPI version, installed version and known-good rollback binary. Verify the actual backup filenames and hashes before stopping services. Keep a consistent database backup and assess migration compatibility; do not restore a database blindly when binary rollback suffices.
+- Verify `/health` returns 200; unauthenticated `/companion/sessions` and `/companion/events` reject access with 401. Authenticated catalog must return JSON with the documented types and device namespace isolation, rather than accepting HTTP 200 alone (an HTML fallback is not success).
+- Verify authenticated SSE returns `text/event-stream` and a `connected` first frame. A bounded `curl` probe may exit 28 because SSE remains open: accept this only when the required response and frame were verified. Timeout alone is never proof of health.
+- Exercise completion delivery and explicit ACK using an isolated test device/event: authorized ACK advances the durable cursor, replay resumes correctly, and invalid/cross-device or cross-namespace ACKs are rejected. Do not consume or ACK the user's pending notifications as a test. Check optional `durationMs` and catalog capabilities against the client contract.
+- Verify Hub and Runner are healthy after switching and Companion reconnects, loads real sessions and preserves its notification/click behavior. Keep automated checks and human sound/menu-bar/Edge acceptance statuses distinct.
+- Fail closed before replacement; after replacement, failed required acceptance triggers rollback to the verified known-good binary and service checks. A preflight failure must not unnecessarily restart production. Record the first failed gate, rollback outcome and any remaining recovery task without credentials.
+
+### Handoff evidence template
+
+```text
+Companion commit / patch path:
+Previous patch SHA-256 / proposed patch SHA-256:
+Target HAPI baseline / version:
+Contract changes / migrations / rollback implications:
+Tests, build and contract evidence:
+Updater owner acknowledgement / commit:
+Pin and upgrade gate results:
+Merge / deployed version / rollback target:
+Pending items / responsible owner:
+```
