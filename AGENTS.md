@@ -43,6 +43,15 @@ Detected deployment signals: deployment target not declared. Do not deploy unles
 
 If asked to deploy, first confirm the intended provider/environment unless `docs/management/CONTROL_PANEL.md` already declares a canonical target.
 
+## Companion / updater coordination rules
+
+- This repository owns `integrations/hapi/hapi-companion.patch`, its API contract and compatibility tests. `hapi-safe-updater` owns patch pins, automatic upgrade gates, deployment execution and rollback implementation. Never add updater implementation here.
+- Before modifying the patch, baseline, contract or compatibility tests, read `integrations/hapi/README.md` → “Patch change and upgrade handoff”.
+- Every patch-content change requires a newly computed SHA-256 and an explicit handoff to the updater owner. Supply the immutable Companion commit, old/new patch hashes, target HAPI baseline, contract/migration changes, test evidence and rollback implications. Do not assume an updater update automatically refreshes its patch pin.
+- The updater owner must update its pin and rerun upgrade acceptance. A message being delivered, a pin being edited, or a branch existing is not proof that production upgrade protection is active. Record the owner response, updater commit and acceptance evidence; keep missing evidence as an open task.
+- Do not mark cross-project integration complete or declare a changed patch safe for automatic production upgrades until that handoff is confirmed. Companion-only changes that leave the patch and contract unchanged do not require a new patch pin.
+- Upgrade acceptance and rollback requirements are defined in `integrations/hapi/README.md`; preserve single SSE + explicit ACK with no polling. Never include credentials in handoff messages, logs or evidence.
+
 ## Branch and release rules
 
 - Record one canonical integration branch; do not infer that the current or default branch is automatically canonical.
