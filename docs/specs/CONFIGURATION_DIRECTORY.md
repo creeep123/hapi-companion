@@ -1,6 +1,6 @@
 # Companion 配置目录选择
 
-状态：实现与验收中。范围：单个 Companion 选择一套 HAPI CLI 配置；不新增多 Hub 同时连接，不修改 Runner、CLI 配置或 Hub 补丁。
+状态：实现已合入；目标 Mac 的无环境重开与 SSE 连接通过，会话列表/UI 待人工确认。范围：单个 Companion 选择一套 HAPI CLI 配置；不新增多 Hub 同时连接，不修改 Runner、CLI 配置或 Hub 补丁。
 
 ## 契约
 - 运行时读取优先级：应用持久设置 `hapiHomeDirectory` → `HAPI_HOME` → `~/.hapi`。
