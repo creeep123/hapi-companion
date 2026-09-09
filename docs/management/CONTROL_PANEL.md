@@ -1,6 +1,6 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-09
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.1.0 is published. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and verified from both a fresh clone and downloaded GitHub release assets.
@@ -19,7 +19,7 @@ New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). 
 
 ## Active fix — isolated HAPI configuration selection
 
-Companion must select the intended Hub when a Mac has multiple Runner configurations. It will persist its own configuration directory, use the same choice for doctor/install/Finder/login startup, and display the selected Hub host. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
+Companion now persists its own configuration directory and displays the selected Hub host. PR #6 is merged at `b67e9ef`; 32 Swift tests, seven shell checks and the Release build passed. Doctor, installation and Finder/login startup share the selection. A [prebuilt installation candidate](https://github.com/creeep123/hapi-companion/releases/tag/v0.2.0-candidate.b67e9ef) is available for the second Mac, which has command-line tools but no full Xcode. Target-device runtime acceptance is in progress; v0.1.0 remains the stable release. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
 
 ## 1. Current status
 
