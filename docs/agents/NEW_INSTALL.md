@@ -13,11 +13,11 @@
 
 ## 执行顺序
 
-1. **识别环境。** 确认 macOS 版本、Xcode/XcodeGen、HAPI CLI 登录状态、目标 Hub、服务器系统与访问方式、现有安装及负责人。只询问无法从环境判断的信息。没有服务器权限时继续 Mac 的独立准备，并把服务器步骤明确交接，不能声称端到端安装完成。
+1. **识别环境。** 确认 macOS 版本、Xcode/XcodeGen、HAPI CLI 登录状态、目标 Hub、服务器系统与访问方式、现有安装及负责人。源码构建必须以 `xcodebuild -version` 实际成功为准，不能仅检查命令是否存在；只有 Command Line Tools 的 Mac 可使用经过校验、包含所需功能的预编译应用。只询问无法从环境判断的信息。没有服务器权限时继续 Mac 的独立准备，并把服务器步骤明确交接，不能声称端到端安装完成。
 2. **准备服务器。** 阅读 [Hub 集成契约](../../integrations/hapi/README.md)，核对所选 HAPI 基线与补丁 SHA。在隔离环境构建、测试和验收；已有 Hub 先核对备份与回滚，新服务器先完成 HAPI 自身配置。生产切换必须有用户授权，不执行盲目覆盖或远程脚本一键运行。
 3. **配置安全升级。** 在 updater 项目使用其支持的 source 模式及 required-patch 配置，锁定已验收的补丁提交和 SHA。按 updater 当前文档配置隔离候选、数据库快照和回滚，并实际运行门禁。功能仅存在于未部署分支或候选测试环境未就绪时，标记自动升级未完成；保留已验收 Hub，不能退回无补丁包升级。
-4. **安装 Mac 应用。** HAPI CLI 必须连接同一个目标 Hub。按 Companion README 执行 `./scripts/doctor.sh` 和 `./install-local.sh`。只保留一个正式安装路径 `~/Applications/HAPI Companion.app`；回滚副本保存为应用目录之外的压缩包，避免重复应用和同 bundle ID 混淆。不要读取或展示完整 CLI 设置、Keychain 导出或任何凭据。
-5. **实际验收。** 核对 Hub 接口和设备隔离、单 SSE 重连与 ACK；Mac 设置窗口加载真实会话，菜单栏图标肉眼可见且点击可打开设置，测试横幅/声音和实际任务完成提醒正常。点击通知应打开精确 `/sessions/<id>`，有 Edge PWA 时复用其窗口。通知权限、声音和自动化权限由用户按系统提示授予。若 Edge 同时提醒，向用户说明重复来源并引导其选择通知渠道。
+4. **安装 Mac 应用。** 明确选择连接目标 Hub 的那一套 CLI 配置。存在多个 Runner 时，不要覆盖默认 `~/.hapi/settings.json`，也不要重启 Runner。源码安装按 Companion README 执行 `./scripts/doctor.sh --hapi-home /absolute/config/directory` 和 `./install-local.sh --hapi-home /absolute/config/directory`；安装器会保存 Companion 自己的选择。预编译安装在 Companion 停止时设置 `hapiHomeDirectory`，具体命令见 README。Finder/登录启动不能仅依赖终端中的 `HAPI_HOME`。只保留一个正式安装路径 `~/Applications/HAPI Companion.app`；回滚副本保存为应用目录之外的压缩包，避免重复应用和同 bundle ID 混淆。不要读取或展示完整 CLI 设置、Keychain 导出或任何凭据。
+5. **实际验收。** 核对 Hub 接口和设备隔离、单 SSE 重连与 ACK；多配置环境还需核对设置窗口的目标 Hub，退出后在没有 `HAPI_HOME` 的环境重新打开仍连接同一 Hub，并确认两份 Runner 配置及原有进程未改变。HTTP/3 使用 UDP，不能仅凭 TCP 连接列表为空判定离线。Mac 设置窗口加载真实会话，菜单栏图标肉眼可见且点击可打开设置，测试横幅/声音和实际任务完成提醒正常。点击通知应打开精确 `/sessions/<id>`，有 Edge PWA 时复用其窗口。通知权限、声音和自动化权限由用户按系统提示授予。若 Edge 同时提醒，向用户说明重复来源并引导其选择通知渠道。
 6. **交付记录。** 报告 Mac 安装路径/版本、Hub 源码与二进制版本、补丁 SHA、updater 版本与 pin、门禁是否实际部署及通过、回滚位置和待办。仅收到测试请求或显示“已连接”不能替代真实提醒、目录与升级验收。
 
 ## 完成标准
