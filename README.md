@@ -50,6 +50,19 @@ cd ~/develop/hapi-companion
 
 Tagged releases also include an ad-hoc signed universal preview build, but it is not Apple-notarized. For security and predictable macOS permissions, the source installer above is the recommended path.
 
+### Multiple HAPI configurations / choosing a Hub
+
+If your Mac has several Runners, select the configuration belonging to the Hub you want:
+
+```bash
+./scripts/doctor.sh --hapi-home "$HOME/.hapi-work"
+./install-local.sh --hapi-home "$HOME/.hapi-work"
+```
+
+Replace `.hapi-work` with your actual directory containing `settings.json`. The installer validates that directory and saves **only its path** in Companion preferences after a successful installation. Finder and login launches use that saved path; existing Runner settings are never modified.
+
+Runtime precedence is saved `hapiHomeDirectory` → `HAPI_HOME` → `~/.hapi`. Without an existing saved choice, `HAPI_HOME=/absolute/path ./install-local.sh` also selects and persists that directory. A missing/invalid selected file fails instead of falling back to another Hub. To switch an installed compatible app without rebuilding, quit Companion, run `defaults write io.github.creeep123.hapicompanion hapiHomeDirectory -string "/absolute/config/directory"`, check `./scripts/doctor.sh`, then reopen it. Verify the host shown in settings and the real session catalog. Never paste tokens into commands or chat.
+
 ### Prerequisites
 
 - macOS 14 or newer

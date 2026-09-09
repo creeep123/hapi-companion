@@ -2,6 +2,15 @@
 set -euo pipefail
 
 ROOT="${0:A:h}"
+source "$ROOT/scripts/hapi-home.sh"
+if (( $# == 0 )); then
+  companion_home="$(resolve_companion_home)"
+elif (( $# == 2 )) && [[ "$1" == "--hapi-home" ]]; then
+  companion_home="$(resolve_companion_home "$2")"
+else
+  print -u2 'Usage: ./install-local.sh [--hapi-home /absolute/config/directory]'
+  exit 1
+fi
 DERIVED="$ROOT/.build"
 PRODUCT="$DERIVED/Build/Products/Release/HAPI Companion.app"
 DEST="$HOME/Applications/HAPI Companion.app"
@@ -15,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT"
-"$ROOT/scripts/doctor.sh"
+"$ROOT/scripts/doctor.sh" --hapi-home "$companion_home"
 "$ROOT/scripts/generate-brand-assets.sh"
 xcodegen generate
 xcodebuild \
@@ -49,6 +58,8 @@ if ! mv "$STAGED" "$DEST"; then
   exit 1
 fi
 codesign --verify --deep --strict "$DEST"
+# Save only the directory after installation succeeds. Never alter CLI settings.
+defaults write io.github.creeep123.hapicompanion hapiHomeDirectory -string "$companion_home"
 open "$DEST"
 
 echo "Installed: $DEST"
