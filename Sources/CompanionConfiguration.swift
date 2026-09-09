@@ -3,10 +3,12 @@ import Foundation
 enum CompanionConfigurationError: LocalizedError {
     case missingCLISettings
     case invalidCLISettings
+    case invalidHomeDirectory
 
     var errorDescription: String? {
         switch self {
-        case .missingCLISettings: "找不到 ~/.hapi/settings.json"
+        case .missingCLISettings: "找不到所选 HAPI 配置目录中的 settings.json"
+        case .invalidHomeDirectory: "HAPI 配置目录必须是绝对路径"
         case .invalidCLISettings: "HAPI CLI 设置缺少 apiUrl 或 cliApiToken"
         }
     }
@@ -21,10 +23,26 @@ struct CompanionConfiguration: Sendable {
         let cliApiToken: String
     }
 
+    // A saved app-specific selection wins over a shell's HAPI_HOME. Finder and
+    // login launches therefore connect to the same Hub as the installer.
+    static let homeDirectoryKey = "hapiHomeDirectory"
+
+    static func settingsURL(
+        savedHome: String? = UserDefaults.standard.string(forKey: homeDirectoryKey),
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        userHome: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws -> URL {
+        let selected = savedHome ?? environment["HAPI_HOME"] ?? userHome.appending(path: ".hapi").path
+        let expanded: String
+        if selected == "~" { expanded = userHome.path }
+        else if selected.hasPrefix("~/") { expanded = userHome.appending(path: String(selected.dropFirst(2))).path }
+        else { expanded = selected }
+        guard expanded.hasPrefix("/") else { throw CompanionConfigurationError.invalidHomeDirectory }
+        return URL(fileURLWithPath: expanded, isDirectory: true).appending(path: "settings.json")
+    }
+
     static func load() throws -> CompanionConfiguration {
-        let settingsURL = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".hapi/settings.json")
-        return try load(from: settingsURL)
+        try load(from: settingsURL())
     }
 
     static func load(from settingsURL: URL) throws -> CompanionConfiguration {

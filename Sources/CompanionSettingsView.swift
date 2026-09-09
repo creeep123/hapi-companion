@@ -11,7 +11,12 @@ struct CompanionSettingsView: View {
         VStack(spacing: 0) {
             HStack {
                 Circle().fill(model.status == "已连接 HAPI Hub" ? Color.green : Color.secondary).frame(width: 8, height: 8)
-                Text(model.status).font(.callout).lineLimit(2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.status).font(.callout).lineLimit(2)
+                    if let host = model.connectedHubHost {
+                        Text(host).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
                 Spacer()
             }.padding(.horizontal, 24).padding(.vertical, 12)
             Divider()

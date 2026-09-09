@@ -17,6 +17,10 @@ Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence an
 
 New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). Acceptance requires either public repository to lead an Agent through Mac Companion, a patched Hub and verified safe-upgrade configuration; an unmerged local document does not meet that requirement.
 
+## Active fix — isolated HAPI configuration selection
+
+Companion must select the intended Hub when a Mac has multiple Runner configurations. It will persist its own configuration directory, use the same choice for doctor/install/Finder/login startup, and display the selected Hub host. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
+
 ## 1. Current status
 
 | Area | Status | Evidence | Next action |

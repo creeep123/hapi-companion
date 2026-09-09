@@ -13,6 +13,7 @@ final class CompanionModel {
     private let preview: Bool
     private var started = false
     private var currentHubURL: URL?
+    var connectedHubHost: String? { currentHubURL?.host }
     let settings: ReminderSettingsStore
     var status = "正在启动 HAPI Companion…"
     var loginItemStatus = "正在检查登录启动…"

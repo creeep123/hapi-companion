@@ -13,7 +13,17 @@ if [[ "$major" == <-> ]] && (( major >= 14 )); then ok "macOS $major is supporte
 command -v xcodebuild >/dev/null && ok "xcodebuild is available" || fail "Install Xcode or Xcode command-line tools"
 command -v xcodegen >/dev/null && ok "xcodegen is available" || fail "Install XcodeGen (for example: brew install xcodegen)"
 
-settings="$HOME/.hapi/settings.json"
+source "${0:A:h}/hapi-home.sh"
+if (( $# == 0 )); then
+  companion_home="$(resolve_companion_home)" || exit 1
+elif (( $# == 2 )) && [[ "$1" == "--hapi-home" ]]; then
+  companion_home="$(resolve_companion_home "$2")" || exit 1
+else
+  print -u2 'Usage: ./scripts/doctor.sh [--hapi-home /absolute/config/directory]'
+  exit 1
+fi
+settings="$companion_home/settings.json"
+ok "Selected HAPI configuration directory: $companion_home"
 if [[ -r "$settings" ]]; then ok "HAPI CLI settings found"; else fail "Missing $settings; install and log in with HAPI CLI first"; fi
 
 if [[ -r "$settings" ]]; then
