@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct CompanionSettingsView: View {
     @Bindable var model: CompanionModel
@@ -29,6 +30,26 @@ struct CompanionSettingsView: View {
                             Button("打开设置") { model.openNotificationSettings() }
                         }.padding(10).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                     }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("提醒音效").font(.headline)
+                        HStack {
+                            Picker("音效", selection: Binding(get: { model.sounds.selected }, set: { model.sounds.select($0) })) {
+                                ForEach(ReminderSoundPreset.all) { sound in Text(sound.name).tag(sound.id) }
+                                if let name = model.sounds.customName { Text("自选：\(name)").tag("custom") }
+                            }.labelsHidden().accessibilityLabel("提醒音效")
+                            Button("试听") { model.sounds.play() }
+                        }
+                        HStack {
+                            Button(model.sounds.customName == nil ? "导入音效…" : "替换自选音效…", action: importSound)
+                            if model.sounds.customName != nil { Button("移除自选", action: model.sounds.removeCustom) }
+                        }
+                        Text("本机通用，自动保存。支持 WAV、AIFF、MP3、M4A，最长 10 秒、最大 10 MB。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text("试听会立即播放声音，不受勿扰规则限制。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let feedback = model.sounds.feedback { Text(feedback).font(.caption).foregroundStyle(.orange) }
+                    }
+                    Divider()
                     VStack(alignment: .leading, spacing: 8) {
                         Text("提醒哪些会话").font(.headline)
                         Picker("提醒范围", selection: $store.preferences.scope) {
@@ -150,6 +171,19 @@ struct CompanionSettingsView: View {
         .tint(coral)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: .infinity, minHeight: 620, idealHeight: 800, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func importSound() {
+        let panel = NSOpenPanel()
+        panel.title = "选择提醒音效"
+        panel.allowedContentTypes = ReminderSounds.extensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try model.sounds.importSound(from: url) }
+            catch { model.sounds.feedback = error.localizedDescription }
+        }
     }
 
     private var sessionList: some View {

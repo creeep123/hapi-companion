@@ -7,7 +7,10 @@ enum CompanionRuntime {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
     }
-    static var isPreview: Bool { ProcessInfo.processInfo.arguments.contains("--settings-preview") }
+    static var isPreview: Bool {
+        ProcessInfo.processInfo.arguments.contains("--settings-preview")
+            || Bundle.main.object(forInfoDictionaryKey: "HAPISettingsPreview") as? Bool == true
+    }
 }
 
 @MainActor

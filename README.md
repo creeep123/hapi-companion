@@ -147,3 +147,11 @@ HAPI Companion requires the durable notification outbox and three routes supplie
 ## License
 
 GNU Affero General Public License v3.0. HAPI Companion is an independent community project and is not presented as an official HAPI release.
+
+## Choosing a notification sound
+
+In the settings window, **提醒音效** offers the original completion tone plus five named Kenney CC0 interface/digital presets. Click **试听** to preview deliberately; choosing a sound alone does not play it. Preview and test reminders bypass quiet hours, while real notifications keep the existing quiet/filter rules.
+
+Use **导入音效…** to select a WAV, AIFF, MP3 or M4A file that macOS can decode (at most 10 seconds and 10 MiB). Companion keeps one replaceable copy in its own Application Support directory, so moving the original is safe. **移除自选** removes only that managed copy. Invalid imports leave the previous choice intact; an unavailable selected sound falls back to the original with visible feedback.
+
+The choice is saved locally for this Mac, independently of per-Hub conversation rules; it is not synced to other devices. No Hub patch or updater changes are needed. Exact sources and licenses: [audio provenance](docs/audio/SOURCES.md).
