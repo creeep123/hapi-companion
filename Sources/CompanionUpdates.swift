@@ -29,7 +29,6 @@ final class CompanionUpdates: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         guard enabled else { return }
         controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
         if let updater = controller?.updater {
-            updater.httpHeaders = ["Accept": "application/vnd.github.raw+json"]
             checkObservation = updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, change in
                 let allowed = change.newValue ?? false
                 Task { @MainActor [weak self] in self?.canCheckForUpdates = allowed }

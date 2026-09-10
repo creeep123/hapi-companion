@@ -2,7 +2,7 @@
 
 User authorizes free research, implementation, publication and local installation. Canonical main; no Hub/updater changes.
 
-Use Sparkle 2.9.6 (permissive open-source framework) and GitHub public release assets + a signed repository appcast fetched through the public GitHub Contents API. No paid Apple membership or hosted service is required. Retain ad-hoc distribution; do not claim notarization.
+Use Sparkle 2.9.6 (permissive open-source framework) and GitHub public release assets + a signed repository appcast delivered through the free jsDelivr GitHub CDN. No paid Apple membership or hosted service is required. Retain ad-hoc distribution; do not claim notarization.
 
 UI: add an application update section in the secondary settings tab, version/build, Check for Updates and an automatic-check toggle. Sparkle standard UI handles available/latest/network error/download/install/relaunch. Daily background checks, no automatic installation without the user's choice, no system profile collection. Preview and XCTest never start an updater.
 
@@ -12,4 +12,6 @@ Acceptance: full existing tests; build normal universal app; inspect embedded Sp
 
 Research: https://sparkle-project.org/documentation/ ; https://sparkle-project.org/documentation/programmatic-setup/ ; https://sparkle-project.org/documentation/sandboxing/ . Custom updater rejected because secure replacement/relaunch and recovery would duplicate a maintained framework. Homebrew alone does not provide in-app reminders. Paid distribution excluded by user requirement.
 
-Native URLSession testing found github.com and raw.githubusercontent.com timeout while api.github.com feed and immutable asset downloads work. Use raw-content Accept for feed and octet-stream Accept for assets, without credentials. Public API rate limiting/network failures are recoverable check errors. v0.3.0 was a prerelease transport candidate and is not promoted.
+Native URLSession testing found github.com and raw.githubusercontent.com timeout while api.github.com feed and immutable asset downloads work. Sparkle forces RSS Accept headers, so GitHub Contents API cannot serve the feed directly. Use jsDelivr for the signed XML and octet-stream Accept for immutable API assets, without credentials. Public API rate limiting/network failures are recoverable check errors. v0.3.0 was a prerelease transport candidate and is not promoted.
+
+GitHub Pages inherits an unrelated account blog domain and returned 404; do not change that domain. jsDelivr returns the signed XML byte-for-byte in native URLSession. Purge the branch feed cache after publication and verify its signature.

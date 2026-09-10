@@ -22,7 +22,8 @@ targets:
     info:
       path: .build/Companion-Info.plist
       properties:
-        SUFeedURL: https://api.github.com/repos/creeep123/hapi-companion/contents/updates/appcast.xml?ref=main
+        CFBundleLocalizations: [zh-Hans, en]
+        SUFeedURL: https://cdn.jsdelivr.net/gh/creeep123/hapi-companion@main/updates/appcast.xml
         SUPublicEDKey: "L8fWqAxRAq/GjQ7YNF1K4kVhOFO/4sizX2NHOC6gFTI="
         SUEnableAutomaticChecks: YES
         SUAutomaticallyUpdate: NO

@@ -31,7 +31,7 @@ Companion now persists its own configuration directory and displays the selected
 
 ## Mac application updates
 
-User authorized v0.3.0 implementation and local installation: free Sparkle-based reminders and click-to-install updates, hosted using existing public GitHub distribution. [Scope and acceptance](../specs/MAC_UPDATES.md). Work in progress; retain current v0.2.2 until verified.
+User authorized v0.3.1 implementation and local installation: free Sparkle-based reminders and click-to-install updates, hosted using existing public GitHub distribution. [Scope and acceptance](../specs/MAC_UPDATES.md). Work in progress; retain current v0.2.2 until verified.
 
 v0.2.2 uses manual app replacement; it does not check for releases or update itself. [Existing-Mac update instructions](../agents/UPDATE_MAC.md) cover prebuilt installation without Xcode and preservation of profiles/settings. Sparkle is the proposed future client updater; implementation is not part of this release. Server HAPI Safe Updater remains a separate project.
 
@@ -156,3 +156,9 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
+
+## Mac update hosting
+
+Canonical free update-feed source: `updates/appcast.xml` on reviewed `main`, delivered through jsDelivr's free public GitHub CDN at https://cdn.jsdelivr.net/gh/creeep123/hapi-companion@main/updates/appcast.xml. Feed and archives remain cryptographically signed. Immutable archives use GitHub Release Asset API downloads, without credentials. No paid account or new server. Release publication must purge the CDN feed cache and verify the public signed bytes.
+
+GitHub Pages was evaluated but inherits the account's existing unrelated blog domain, whose route returns 404. It is not the update endpoint; do not alter that blog/domain. The experimental `gh-pages` branch contains only an index and initial signed feed; canonical implementation remains main.
