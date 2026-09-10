@@ -8,7 +8,7 @@ import ServiceManagement
 final class CompanionModel {
     private let sessionOpener = SessionOpener()
     private let service: CompanionService
-    private var activeSound: NSSound?
+    let sounds: ReminderSounds
     private let defaults: UserDefaults
     private let preview: Bool
     private var started = false
@@ -30,6 +30,9 @@ final class CompanionModel {
         self.defaults = defaults
         self.service = service
         self.preview = preview
+        let previewSounds = preview ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "HAPI Companion/PreviewSounds", directoryHint: .isDirectory) : nil
+        sounds = ReminderSounds(defaults: defaults, directory: previewSounds)
         settings = ReminderSettingsStore(defaults: defaults)
     }
 
@@ -177,14 +180,7 @@ final class CompanionModel {
 
     @discardableResult
     func playSound() -> Bool {
-        guard let url = Bundle.main.url(forResource: "HapiComplete", withExtension: "aiff"),
-              let sound = NSSound(contentsOf: url, byReference: true) else {
-            lastAction = "找不到内置提示音"
-            return false
-        }
-        activeSound?.stop()
-        activeSound = sound
-        return sound.play()
+        sounds.play()
     }
 
     func sendTestNotification() async {

@@ -1,9 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.1.0 is published. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and verified from both a fresh clone and downloaded GitHub release assets.
+
+## Active feature — selectable notification sounds
+
+User approved implementation on 2026-09-10. Add named short built-in sounds (including retro digital sounds), explicit preview and one replaceable custom audio file in the existing settings window. Choice is local to this Mac and survives restarts; existing reminders keep the original sound by default. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). Implementation complete: 41 Swift tests and the universal Release build pass. Six choices (original plus five CC0 samples), preview, managed custom-file import and fallback are ready. Native settings interaction was checked in isolated preview. Next: human listening acceptance, then approved normal-app installation for real completion verification.
 
 ## Active iteration — V0.2 notification settings
 
