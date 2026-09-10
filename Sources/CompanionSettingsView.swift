@@ -171,7 +171,7 @@ struct CompanionSettingsView: View {
                 Text("应用更新").font(.headline)
                 Text("HAPI Companion \(model.updates.version)").font(.caption).foregroundStyle(.secondary)
                 Button("检查更新…") { model.updates.checkForUpdates() }
-                    .disabled(!model.updates.enabled)
+                    .disabled(!model.updates.canCheckForUpdates)
                 Toggle("自动检查新版本", isOn: Binding(
                     get: { model.updates.automaticallyChecks },
                     set: { model.updates.automaticallyChecks = $0 }

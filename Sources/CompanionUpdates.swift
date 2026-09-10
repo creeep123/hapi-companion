@@ -11,6 +11,8 @@ final class CompanionUpdates: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     var availableVersion: String?
     var supportsGentleScheduledUpdateReminders: Bool { true }
     let enabled: Bool
+    var canCheckForUpdates = false
+    @ObservationIgnored private var checkObservation: NSKeyValueObservation?
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
     var automaticallyChecks: Bool {
         didSet { controller?.updater.automaticallyChecksForUpdates = automaticallyChecks }
@@ -26,6 +28,13 @@ final class CompanionUpdates: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         super.init()
         guard enabled else { return }
         controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
+        if let updater = controller?.updater {
+            updater.httpHeaders = ["Accept": "application/vnd.github.raw+json"]
+            checkObservation = updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, change in
+                let allowed = change.newValue ?? false
+                Task { @MainActor [weak self] in self?.canCheckForUpdates = allowed }
+            }
+        }
         controller?.startUpdater()
     }
 
@@ -45,6 +54,10 @@ final class CompanionUpdates: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     }
 
     func checkForUpdates() { controller?.checkForUpdates(nil) }
+
+    func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+    }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
         // The validated update is about to replace this ad-hoc signed app.
