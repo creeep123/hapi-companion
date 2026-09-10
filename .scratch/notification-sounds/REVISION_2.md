@@ -1,5 +1,5 @@
 # Sound revision 2
-Status: ready for human listening acceptance
+Status: done
 Spec: docs/specs/NOTIFICATION_SOUNDS.md, revision 2.
 Deliver fuller phone cues, measured loudness alignment and persistent app-only volume. Verify preset LUFS/true peak, volume application to all playback paths, legacy preference compatibility, custom import and quiet/ACK behavior; provide isolated preview for human listening.
 
@@ -15,3 +15,6 @@ Deliver fuller phone cues, measured loudness alignment and persistent app-only v
 - Clean universal Release build passed, strict ad-hoc seal verified. UI shows the preset picker and volume slider at default 80%, with app-only/zero-volume/custom-loudness explanations.
 - User began interacting with the preview during the slider check; automation stopped without overriding their choice. Native slider endpoints/relaunch are left for human acceptance; unit tests cover the underlying gain and persistence behavior.
 - Candidate is 0.2.2 with an isolated bundle ID and HAPISettingsPreview flag; double-click cannot pair or register a login item. Existing live Companion remains untouched.
+
+## Final acceptance — 2026-09-10
+User accepted this feature and authorized release. Published and installed as v0.2.2; see docs/deployments/V0_2_2_MAC_RELEASE.md. Earlier preview-only notes above are historical.
