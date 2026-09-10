@@ -4,19 +4,19 @@
 
 <p align="center"><strong>Hear completion. Return exactly where the work happened.</strong></p>
 
-<p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.2.2">Download v0.2.2</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
+<p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.3.1">Download v0.3.1</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
 
 Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
 
 HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.
 
-> Project status: v0.2.2 release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
+> Project status: v0.3.1 release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
 
-## v0.2.2
+## v0.3.1
 
-Native settings now have two tabs for conversation/keyword rules, task duration, quiet hours and calibrated phone-style notification sounds with volume/custom import. Companion can persist its own Hub configuration directory independently of existing Runners. See [release notes](docs/releases/v0.2.2.md) and [updating an existing Mac](docs/agents/UPDATE_MAC.md). The reviewed Hub integration is still required for notifications, the session catalog and measured turn duration.
+Native settings now have two tabs for conversation/keyword rules, task duration, quiet hours and calibrated phone-style notification sounds with volume/custom import. Companion can persist its own Hub configuration directory independently of existing Runners. See [release notes](docs/releases/v0.3.1.md) and [updating an existing Mac](docs/agents/UPDATE_MAC.md). The reviewed Hub integration is still required for notifications, the session catalog and measured turn duration.
 
-There is no in-app update notification or one-click updater yet. Downloaded app updates need no Xcode; HAPI Safe Updater handles server updates only.
+Free in-app updates are available under “声音与设置”: check manually or enable daily new-version reminders, then choose installation and relaunch. Sparkle verifies signed feeds and archives; public GitHub assets and the free jsDelivr CDN require no account or subscription. Older clients need one manual bootstrap; see [Mac update instructions](docs/agents/UPDATE_MAC.md). HAPI Safe Updater handles server updates only.
 
 ## Why it exists
 

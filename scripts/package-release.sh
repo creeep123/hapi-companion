@@ -29,7 +29,7 @@ xcodebuild \
 actual_version="$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)"
 [[ "$actual_version" == "$VERSION" ]] || { echo "Version mismatch: project=$actual_version requested=$VERSION" >&2; exit 1; }
 
-codesign --force --deep --sign - "$APP"
+"$ROOT/scripts/sign-app.sh" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 mkdir -p "$DIST"

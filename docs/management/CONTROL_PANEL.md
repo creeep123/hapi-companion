@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.2.2 is publicly released and installed on the current Mac after user acceptance on 2026-09-10. Download checksums, 45 tests, live connection, real catalog and test reminder passed. [Release evidence and rollback](../deployments/V0_2_2_MAC_RELEASE.md). No Hub/updater deployment was included.
+**Current posture:** v0.3.1 free application updates passed an actual download/install/relaunch on this Mac with Hub reconnection and settings retained. Preparing canonical-feed verification and stable promotion; v0.2.2 remains the recommended public stable release until then. [Evidence](../deployments/V0_3_1_MAC_UPDATES.md).
 
 ## Active feature — selectable notification sounds
 
@@ -30,6 +30,8 @@ New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). 
 Companion now persists its own configuration directory and displays the selected Hub host. PR #6 is merged at `b67e9ef`; 32 Swift tests, seven shell checks and the Release build passed. Doctor, installation and Finder/login startup share the selection. A [prebuilt installation candidate](https://github.com/creeep123/hapi-companion/releases/tag/v0.2.0-candidate.b67e9ef) is available for the second Mac, which has command-line tools but no full Xcode. The second Mac now runs the candidate against the intended Hub. Restarting with no HAPI_HOME still produces the app’s own “SSE connected status=200” log; both Runner settings files are byte-identical to their pre-install copies. Login startup is registered and a persistent rollback archive is retained. The peer cannot read native UI, so the real session list and visual notification flow remain pending human acceptance; v0.2.2 is now the stable release; the other Mac has not been upgraded by this session. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
 
 ## Mac application updates
+
+User authorized v0.3.1 implementation and local installation: free Sparkle-based reminders and click-to-install updates, hosted using existing public GitHub distribution. [Scope and acceptance](../specs/MAC_UPDATES.md). Work in progress; retain current v0.2.2 until verified.
 
 v0.2.2 uses manual app replacement; it does not check for releases or update itself. [Existing-Mac update instructions](../agents/UPDATE_MAC.md) cover prebuilt installation without Xcode and preservation of profiles/settings. Sparkle is the proposed future client updater; implementation is not part of this release. Server HAPI Safe Updater remains a separate project.
 
@@ -154,3 +156,9 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
+
+## Mac update hosting
+
+Canonical free update-feed source: `updates/appcast.xml` on reviewed `main`, delivered through jsDelivr's free public GitHub CDN at https://cdn.jsdelivr.net/gh/creeep123/hapi-companion@main/updates/appcast.xml. Feed and archives remain cryptographically signed. Immutable archives use GitHub Release Asset API downloads, without credentials. No paid account or new server. Release publication must purge the CDN feed cache and verify the public signed bytes.
+
+GitHub Pages was evaluated but inherits the account's existing unrelated blog domain, whose route returns 404. It is not the update endpoint; do not alter that blog/domain. The experimental `gh-pages` branch contains only an index and initial signed feed; canonical implementation remains main.

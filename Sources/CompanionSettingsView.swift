@@ -21,6 +21,9 @@ struct CompanionSettingsView: View {
                     }
                 }
                 Spacer()
+                if let version = model.updates.availableVersion {
+                    Button("新版 \(version)") { model.updates.checkForUpdates() }
+                }
             }.padding(.horizontal, 24).padding(.vertical, 12)
             Divider()
             if !model.notificationAllowed {
@@ -165,6 +168,16 @@ struct CompanionSettingsView: View {
     private var soundAndSettings: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
+                Text("应用更新").font(.headline)
+                Text("HAPI Companion \(model.updates.version)").font(.caption).foregroundStyle(.secondary)
+                Button("检查更新…") { model.updates.checkForUpdates() }
+                    .disabled(!model.updates.canCheckForUpdates)
+                Toggle("自动检查新版本", isOn: Binding(
+                    get: { model.updates.automaticallyChecks },
+                    set: { model.updates.automaticallyChecks = $0 }
+                )).disabled(!model.updates.enabled)
+                Text("每天检查；发现新版后提醒，由你选择安装并重启。").font(.caption).foregroundStyle(.secondary)
+                Divider()
                 Text("系统设置").font(.headline)
                 HStack {
                     Text(model.permissionStatus).font(.callout)

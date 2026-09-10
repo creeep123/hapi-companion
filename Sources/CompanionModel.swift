@@ -8,6 +8,7 @@ import ServiceManagement
 final class CompanionModel {
     private let sessionOpener = SessionOpener()
     private let service: CompanionService
+    let updates: CompanionUpdates
     let sounds: ReminderSounds
     private let defaults: UserDefaults
     private let preview: Bool
@@ -30,6 +31,7 @@ final class CompanionModel {
         self.defaults = defaults
         self.service = service
         self.preview = preview
+        updates = CompanionUpdates(enabled: !preview && !CompanionRuntime.isTesting)
         let previewSounds = preview ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appending(path: "HAPI Companion/PreviewSounds", directoryHint: .isDirectory) : nil
         sounds = ReminderSounds(defaults: defaults, directory: previewSounds)

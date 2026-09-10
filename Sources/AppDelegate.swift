@@ -113,6 +113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        if response.notification.request.identifier == CompanionUpdates.notificationID {
+            if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+                await MainActor.run { self.model?.updates.checkForUpdates() }
+            }
+            return
+        }
         guard let sessionId = response.notification.request.content.userInfo["sessionId"] as? String else { return }
         let url = response.notification.request.content.userInfo["url"] as? String ?? ""
         await MainActor.run { self.model?.openEventURL(url, fallbackSessionId: sessionId) }

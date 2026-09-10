@@ -7,14 +7,32 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    MARKETING_VERSION: "0.2.2"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "0.3.1"
+    CURRENT_PROJECT_VERSION: "6"
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: "-"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.6
 targets:
   HapiCompanion:
     type: application
     platform: macOS
+    info:
+      path: .build/Companion-Info.plist
+      properties:
+        CFBundleLocalizations: [zh-Hans, en]
+        SUFeedURL: https://cdn.jsdelivr.net/gh/creeep123/hapi-companion@main/updates/appcast.xml
+        SUPublicEDKey: "L8fWqAxRAq/GjQ7YNF1K4kVhOFO/4sizX2NHOC6gFTI="
+        SUEnableAutomaticChecks: YES
+        SUAutomaticallyUpdate: NO
+        SUAllowsAutomaticUpdates: NO
+        SUSendProfileInfo: NO
+        SURequireSignedFeed: YES
+        SUVerifyUpdateBeforeExtraction: YES
+    dependencies:
+      - package: Sparkle
     sources:
       - Sources
       - Resources
