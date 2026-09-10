@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.2.2 release authorized on 2026-09-10 after sound and tab-layout acceptance. Preparing a clean universal app, public release assets and local installation. No Hub/updater deployment is included.
+**Current posture:** v0.2.2 is publicly released and installed on the current Mac after user acceptance on 2026-09-10. Download checksums, 45 tests, live connection, real catalog and test reminder passed. [Release evidence and rollback](../deployments/V0_2_2_MAC_RELEASE.md). No Hub/updater deployment was included.
 
 ## Active feature — selectable notification sounds
 
-Revision 2 implements the user's listening feedback: the five short effects are replaced by actual AOSP phone-notification cues (1.2–2.9 seconds), and all six presets including the original timbre have calibrated playback copies. Their measured loudness differs by only 0.04 LU, a unit for comparing audio level. An app-only 0–100% volume slider defaults to 80% and survives restarts. Custom imports use the same slider but retain their own loudness. 45 Swift tests and automated audio measurements pass. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). The user accepted the sound functionality on 2026-09-10. Next: reorganize settings into two tabs, with reminder rules first and sounds on the secondary page; prepare a native preview before normal-app replacement.
+Revision 2 implements the user's listening feedback: the five short effects are replaced by actual AOSP phone-notification cues (1.2–2.9 seconds), and all six presets including the original timbre have calibrated playback copies. Their measured loudness differs by only 0.04 LU, a unit for comparing audio level. An app-only 0–100% volume slider defaults to 80% and survives restarts. Custom imports use the same slider but retain their own loudness. 45 Swift tests and automated audio measurements pass. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). The user accepted the sound functionality on 2026-09-10. The accepted two-tab layout and sounds are now included in the installed/public v0.2.2 release.
 
 ## Active UI refinement — settings tabs
 
@@ -17,17 +17,17 @@ User requested clearer grouping and lower prominence for sounds. Keep two tabs o
 
 **Local V0.2 installed; VM Hub V0.2 deployment and session-catalog acceptance completed on 2026-09-08.** The approved single-window settings are implemented: select real HAPI conversations or title keywords, skip short foreground tasks, and schedule quiet hours. Settings autosave locally. The menu-bar entry is retained explicitly and reopening the app opens settings as a fallback.
 
-Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. Local V0.2.0 is installed with a valid ad-hoc seal and healthy SSE connection; the VM Hub was subsequently upgraded and its catalog/SSE checks passed; v0.1.0 remains the public release.
+Independent technical-plan and implementation reviews are complete; both implementation findings were fixed. Client tests pass; Hub package tests total 6,787 passed / 4 skipped, with build and type checks passing. A baseline Node 25 test-environment issue is documented with a clean-source comparison. Local V0.2.0 is installed with a valid ad-hoc seal and healthy SSE connection; the VM Hub was subsequently upgraded and its catalog/SSE checks passed; v0.2.2 is now the public release; this paragraph records the earlier V0.2 deployment.
 
-Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). Canonical `main` is `cb6b48a`; feature PR #1 and installation fixes PR #2/#3 are merged.
+Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). At that earlier milestone, canonical `main` was `cb6b48a`; feature PR #1 and installation fixes PR #2/#3 are merged.
 
-**Next action:** complete the new-user installation entry in both repositories and verify the missing menu-bar icon on the current Mac. Two old v0.1 application copies have been removed from Applications after preserving a verified compressed rollback archive. Menu-bar visibility remains under runtime investigation; notifications and the session catalog are working. Updater implementation remains in `hapi-safe-updater`.
+**Next action:** other Macs can follow the public [update guide](../agents/UPDATE_MAC.md). Consider in-app update checks for a later version. Separate the remaining second-Mac visual acceptance from this Mac’s completed release. Updater implementation remains in `hapi-safe-updater`.
 
 New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). Acceptance requires either public repository to lead an Agent through Mac Companion, a patched Hub and verified safe-upgrade configuration; an unmerged local document does not meet that requirement.
 
 ## Active fix — isolated HAPI configuration selection
 
-Companion now persists its own configuration directory and displays the selected Hub host. PR #6 is merged at `b67e9ef`; 32 Swift tests, seven shell checks and the Release build passed. Doctor, installation and Finder/login startup share the selection. A [prebuilt installation candidate](https://github.com/creeep123/hapi-companion/releases/tag/v0.2.0-candidate.b67e9ef) is available for the second Mac, which has command-line tools but no full Xcode. The second Mac now runs the candidate against the intended Hub. Restarting with no HAPI_HOME still produces the app’s own “SSE connected status=200” log; both Runner settings files are byte-identical to their pre-install copies. Login startup is registered and a persistent rollback archive is retained. The peer cannot read native UI, so the real session list and visual notification flow remain pending human acceptance; v0.1.0 remains the stable release. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
+Companion now persists its own configuration directory and displays the selected Hub host. PR #6 is merged at `b67e9ef`; 32 Swift tests, seven shell checks and the Release build passed. Doctor, installation and Finder/login startup share the selection. A [prebuilt installation candidate](https://github.com/creeep123/hapi-companion/releases/tag/v0.2.0-candidate.b67e9ef) is available for the second Mac, which has command-line tools but no full Xcode. The second Mac now runs the candidate against the intended Hub. Restarting with no HAPI_HOME still produces the app’s own “SSE connected status=200” log; both Runner settings files are byte-identical to their pre-install copies. Login startup is registered and a persistent rollback archive is retained. The peer cannot read native UI, so the real session list and visual notification flow remain pending human acceptance; v0.2.2 is now the stable release; the other Mac has not been upgraded by this session. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
 
 ## Mac application updates
 
@@ -38,12 +38,12 @@ v0.2.2 uses manual app replacement; it does not check for releases or update its
 | Area | Status | Evidence | Next action |
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
-| macOS client | Green | v0.1 baseline: Swift 6 universal app; thirteen tests pass. V0.2 candidate: 29 tests pass | Preserve URL-origin and delivery guarantees |
+| macOS client | Green | v0.2.2 universal app; 45 tests pass; current Mac runtime verified | Preserve URL-origin and delivery guarantees |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
-| Distribution | Yellow | v0.1.0 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
-| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, release v0.1.0 verified | Maintain release provenance |
+| Distribution | Yellow | v0.2.2 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
+| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, release v0.2.2 verified | Maintain release provenance |
 
 ## 2. Product boundary
 
@@ -98,7 +98,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | HAPI integration baseline | `tiann/hapi@d3d4fd1706564782e9a58b917df4e0677f65051f` |
 | Compatible HAPI line | 0.29.0 reference baseline |
 | Current local production app | `~/Applications/HAPI Companion.app` |
-| Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.1.0` |
+| Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.2.2` |
 | Rollback for local app | reinstall the previously known-good app bundle |
 | Hub rollback | prior Hub binary/container plus pre-v26 database backup |
 
@@ -109,7 +109,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0 repository baseline | Done | clean commit is pushed; README, Control Panel, doctor, tests, and integration patch are verified |
 | V0 brand baseline | Done | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
-| V0.2 notification settings | Ready for human | implementation/reviews complete; approve deployment environment and verify real Mac notification flow |
+| V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | Future Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
@@ -153,4 +153,4 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
-| upstream Hub proposal | — | — | V0.2 settings candidate / human runtime acceptance | Control Panel and Signal Buddy brand |
+| upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
