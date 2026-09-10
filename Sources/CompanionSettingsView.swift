@@ -2,7 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct CompanionSettingsView: View {
+    private enum SettingsPage { case rules, sound }
     @Bindable var model: CompanionModel
+    @State private var page: SettingsPage = .rules
     @State private var search = ""
     @State private var keyword = ""
     private let coral = Color(red: 0.94, green: 0.37, blue: 0.29)
@@ -21,151 +23,25 @@ struct CompanionSettingsView: View {
                 Spacer()
             }.padding(.horizontal, 24).padding(.vertical, 12)
             Divider()
+            if !model.notificationAllowed {
+                HStack {
+                    Text(model.permissionStatus).font(.caption)
+                    Spacer()
+                    Button("打开设置") { model.openNotificationSettings() }
+                }.padding(10).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 20).padding(.top, 10)
+            }
+            Picker("设置分类", selection: $page) {
+                Text("提醒规则").tag(SettingsPage.rules)
+                Text("声音与设置").tag(SettingsPage.sound)
+            }.pickerStyle(.segmented).labelsHidden()
+                .accessibilityLabel("设置分类")
+                .frame(maxWidth: 320).padding(.top, 14).padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if !model.notificationAllowed {
-                        HStack {
-                            Text(model.permissionStatus).font(.caption)
-                            Spacer()
-                            Button("打开设置") { model.openNotificationSettings() }
-                        }.padding(10).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("提醒音效").font(.headline)
-                        HStack {
-                            Picker("音效", selection: Binding(get: { model.sounds.selected }, set: { model.sounds.select($0) })) {
-                                ForEach(ReminderSoundPreset.all) { sound in Text(sound.name).tag(sound.id) }
-                                if let name = model.sounds.customName { Text("自选：\(name)").tag("custom") }
-                            }.labelsHidden().accessibilityLabel("提醒音效")
-                            Button("试听") { model.sounds.play() }
-                        }
-                        HStack {
-                            Text("音量").font(.callout)
-                            Slider(value: Binding(get: { model.sounds.volume }, set: { model.sounds.volume = $0 }), in: 0...1, step: 0.01)
-                                .accessibilityLabel("提醒音量")
-                            Text("\(Int((model.sounds.volume * 100).rounded()))%")
-                                .monospacedDigit().frame(width: 42, alignment: .trailing)
-                        }
-                        Text(model.sounds.volume == 0 ? "已静音，仍显示通知。" : "只调整 Companion；最终音量也受系统音量影响。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Button(model.sounds.customName == nil ? "导入音效…" : "替换自选音效…", action: importSound)
-                            if model.sounds.customName != nil { Button("移除自选", action: model.sounds.removeCustom) }
-                        }
-                        Text("本机通用，自动保存。支持 WAV、AIFF、MP3、M4A，最长 10 秒、最大 10 MB。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text("预置音效已统一响度；自选文件保留原始响度，可用上方音量调节。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(model.sounds.volume == 0 ? "试听已静音；调高音量后再试听。" : "试听会立即播放声音，不受勿扰规则限制。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        if let feedback = model.sounds.feedback { Text(feedback).font(.caption).foregroundStyle(.orange) }
-                    }
-                    Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("提醒哪些会话").font(.headline)
-                        Picker("提醒范围", selection: $store.preferences.scope) {
-                            Text("全部会话").tag(ReminderScope.all)
-                            Text("指定会话").tag(ReminderScope.specified)
-                        }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity)
-                        if store.preferences.scope == .specified {
-                            HStack {
-                                TextField("搜索会话标题", text: $search)
-                                    .textFieldStyle(.roundedBorder)
-                                    .accessibilityIdentifier("session-search")
-                                Button { Task { await model.refreshCatalog() } } label: { Image(systemName: "arrow.clockwise") }
-                                    .help("刷新 HAPI 会话列表").disabled(model.catalogLoading)
-                            }
-                            if model.catalogLoading { ProgressView("正在读取会话…").controlSize(.small) }
-                            if let error = model.catalogError {
-                                Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
-                            }
-                            sessionList
-                            HStack {
-                                Text("已选 \(store.preferences.selectedSessionIDs.count) 个会话").font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                if !store.preferences.selectedSessionIDs.isEmpty {
-                                    Button("清除选择") { store.preferences.selectedSessionIDs = [] }.font(.caption)
-                                }
-                            }
-                            Text("或按标题关键词提醒").font(.subheadline.weight(.medium))
-                            if !store.preferences.keywords.isEmpty {
-                                // Adaptive grid avoids a horizontally overflowing chip row.
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 125), alignment: .leading)], alignment: .leading, spacing: 6) {
-                                    ForEach(store.preferences.keywords, id: \.self) { value in
-                                        HStack(spacing: 4) {
-                                            Text(value).lineLimit(1).help(value)
-                                            Button { store.preferences.keywords.removeAll { $0 == value } } label: {
-                                                Image(systemName: "xmark").font(.caption2)
-                                            }.buttonStyle(.plain).accessibilityLabel("移除关键词 \(value)")
-                                        }.font(.callout).padding(.horizontal, 8).padding(.vertical, 5)
-                                            .background(coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                                    }
-                                }
-                            }
-                            HStack {
-                                TextField("添加标题关键词…", text: $keyword).textFieldStyle(.roundedBorder).onSubmit(addKeyword)
-                                Button("添加", action: addKeyword).disabled(keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            }
-                            Text("选中会话或标题包含任一关键词，就会纳入提醒。关键词也适用于新会话。")
-                                .font(.caption).foregroundStyle(.secondary)
-                            if store.preferences.selectedSessionIDs.isEmpty && store.preferences.keywords.isEmpty {
-                                Text("尚未选择会话或关键词，当前不会提醒任何会话。")
-                                    .font(.caption).foregroundStyle(.orange)
-                            }
-                        }
-                    }
-                    Divider()
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack { Text("跳过短任务").font(.headline); Spacer(); Toggle("跳过短任务", isOn: $store.preferences.durationEnabled).labelsHidden().toggleStyle(.switch) }
-                        if store.preferences.durationEnabled {
-                            HStack {
-                                Text("本轮任务超过")
-                                TextField("分钟", value: $store.preferences.minimumMinutes, format: .number)
-                                    .frame(width: 52).textFieldStyle(.roundedBorder)
-                                Stepper("分钟", value: $store.preferences.minimumMinutes, in: 1...1440).labelsHidden().fixedSize()
-                                Text("分钟才提醒")
-                                Spacer()
-                            }
-                            Text("耗时未知的任务仍提醒；需要你授权的请求不受时长限制。")
-                                .font(.caption).foregroundStyle(.secondary)
-                            if !model.durationSupported {
-                                Text("尚未确认 Hub 支持任务耗时。旧版 Hub 需升级集成补丁，此时不会过滤耗时未知的任务。")
-                                    .font(.caption).foregroundStyle(.orange)
-                            }
-                        }
-                    }
-                    Divider()
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack { Text("勿扰时段").font(.headline); Spacer(); Toggle("勿扰时段", isOn: $store.preferences.quietEnabled).labelsHidden().toggleStyle(.switch) }
-                        if store.preferences.quietEnabled {
-                            HStack {
-                                Text("每天")
-                                Spacer()
-                                DatePicker("开始", selection: minuteBinding(start: true), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 105)
-                                Text("至")
-                                DatePicker("结束", selection: minuteBinding(start: false), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 105)
-                            }
-                            Picker("勿扰期间", selection: $store.preferences.quietMode) {
-                                Text("只静音").tag(QuietMode.mute)
-                                Text("关闭全部提醒").tag(QuietMode.suppress)
-                            }.pickerStyle(.segmented)
-                            Text(store.preferences.quietStartMinutes == store.preferences.quietEndMinutes
-                                 ? "开始和结束相同：全天勿扰。"
-                                 : "按本机时间；勿扰期间完成的任务，结束后不补响。")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Text("筛选跳过的提醒不会在修改设置后补发。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if model.loginItemStatus != "登录时自动启动：已启用" {
-                        HStack {
-                            Text(model.loginItemStatus).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("登录项设置") { model.openLoginItemSettings() }.font(.caption)
-                        }
-                    }
-                }.padding(20)
-            }
+                    if page == .rules { reminderRules } else { soundAndSettings }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
+            }.id(page)
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -182,6 +58,157 @@ struct CompanionSettingsView: View {
         .tint(coral)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: .infinity, minHeight: 620, idealHeight: 800, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var reminderRules: some View {
+        @Bindable var store = model.settings
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("提醒哪些会话").font(.headline)
+                Picker("提醒范围", selection: $store.preferences.scope) {
+                    Text("全部会话").tag(ReminderScope.all)
+                    Text("指定会话").tag(ReminderScope.specified)
+                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity)
+                if store.preferences.scope == .specified {
+                    HStack {
+                        TextField("搜索会话标题", text: $search)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("session-search")
+                        Button { Task { await model.refreshCatalog() } } label: { Image(systemName: "arrow.clockwise") }
+                            .help("刷新 HAPI 会话列表").disabled(model.catalogLoading)
+                    }
+                    if model.catalogLoading { ProgressView("正在读取会话…").controlSize(.small) }
+                    if let error = model.catalogError {
+                        Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    }
+                    sessionList
+                    HStack {
+                        Text("已选 \(store.preferences.selectedSessionIDs.count) 个会话").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        if !store.preferences.selectedSessionIDs.isEmpty {
+                            Button("清除选择") { store.preferences.selectedSessionIDs = [] }.font(.caption)
+                        }
+                    }
+                    Text("或按标题关键词提醒").font(.subheadline.weight(.medium))
+                    if !store.preferences.keywords.isEmpty {
+                        // Adaptive grid avoids a horizontally overflowing chip row.
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 125), alignment: .leading)], alignment: .leading, spacing: 6) {
+                            ForEach(store.preferences.keywords, id: \.self) { value in
+                                HStack(spacing: 4) {
+                                    Text(value).lineLimit(1).help(value)
+                                    Button { store.preferences.keywords.removeAll { $0 == value } } label: {
+                                        Image(systemName: "xmark").font(.caption2)
+                                    }.buttonStyle(.plain).accessibilityLabel("移除关键词 \(value)")
+                                }.font(.callout).padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                    }
+                    HStack {
+                        TextField("添加标题关键词…", text: $keyword).textFieldStyle(.roundedBorder).onSubmit(addKeyword)
+                        Button("添加", action: addKeyword).disabled(keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    Text("选中会话或标题包含任一关键词，就会纳入提醒。关键词也适用于新会话。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if store.preferences.selectedSessionIDs.isEmpty && store.preferences.keywords.isEmpty {
+                        Text("尚未选择会话或关键词，当前不会提醒任何会话。")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack { Text("跳过短任务").font(.headline); Spacer(); Toggle("跳过短任务", isOn: $store.preferences.durationEnabled).labelsHidden().toggleStyle(.switch) }
+                if store.preferences.durationEnabled {
+                    HStack {
+                        Text("本轮任务超过")
+                        TextField("分钟", value: $store.preferences.minimumMinutes, format: .number)
+                            .frame(width: 52).textFieldStyle(.roundedBorder)
+                        Stepper("分钟", value: $store.preferences.minimumMinutes, in: 1...1440).labelsHidden().fixedSize()
+                        Text("分钟才提醒")
+                        Spacer()
+                    }
+                    Text("耗时未知的任务仍提醒；需要你授权的请求不受时长限制。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !model.durationSupported {
+                        Text("尚未确认 Hub 支持任务耗时。旧版 Hub 需升级集成补丁，此时不会过滤耗时未知的任务。")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack { Text("勿扰时段").font(.headline); Spacer(); Toggle("勿扰时段", isOn: $store.preferences.quietEnabled).labelsHidden().toggleStyle(.switch) }
+                if store.preferences.quietEnabled {
+                    HStack {
+                        Text("每天")
+                        Spacer()
+                        DatePicker("开始", selection: minuteBinding(start: true), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 105)
+                        Text("至")
+                        DatePicker("结束", selection: minuteBinding(start: false), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 105)
+                    }
+                    Picker("勿扰期间", selection: $store.preferences.quietMode) {
+                        Text("只静音").tag(QuietMode.mute)
+                        Text("关闭全部提醒").tag(QuietMode.suppress)
+                    }.pickerStyle(.segmented)
+                    Text(store.preferences.quietStartMinutes == store.preferences.quietEndMinutes
+                         ? "开始和结束相同：全天勿扰。"
+                         : "按本机时间；勿扰期间完成的任务，结束后不补响。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Text("筛选跳过的提醒不会在修改设置后补发。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var soundAndSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("系统设置").font(.headline)
+                HStack {
+                    Text(model.permissionStatus).font(.callout)
+                    Spacer()
+                    Button("通知设置") { model.openNotificationSettings() }
+                }
+                HStack {
+                    Text(model.loginItemStatus).font(.callout)
+                    Spacer()
+                    Button("登录项设置") { model.openLoginItemSettings() }
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                Text("提醒音效").font(.headline)
+                HStack {
+                    Picker("音效", selection: Binding(get: { model.sounds.selected }, set: { model.sounds.select($0) })) {
+                        ForEach(ReminderSoundPreset.all) { sound in Text(sound.name).tag(sound.id) }
+                        if let name = model.sounds.customName { Text("自选：\(name)").tag("custom") }
+                    }.labelsHidden().accessibilityLabel("提醒音效")
+                    Button("试听") { model.sounds.play() }
+                }
+                HStack {
+                    Text("音量").font(.callout)
+                    Slider(value: Binding(get: { model.sounds.volume }, set: { model.sounds.volume = $0 }), in: 0...1, step: 0.01)
+                        .accessibilityLabel("提醒音量")
+                    Text("\(Int((model.sounds.volume * 100).rounded()))%")
+                        .monospacedDigit().frame(width: 42, alignment: .trailing)
+                }
+                Text(model.sounds.volume == 0 ? "已静音，仍显示通知。" : "只调整 Companion；最终音量也受系统音量影响。")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button(model.sounds.customName == nil ? "导入音效…" : "替换自选音效…", action: importSound)
+                    if model.sounds.customName != nil { Button("移除自选", action: model.sounds.removeCustom) }
+                }
+                Text("本机通用，自动保存。支持 WAV、AIFF、MP3、M4A，最长 10 秒、最大 10 MB。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("预置音效已统一响度；自选文件保留原始响度，可用上方音量调节。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(model.sounds.volume == 0 ? "试听已静音；调高音量后再试听。" : "试听会立即播放声音，不受勿扰规则限制。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let feedback = model.sounds.feedback { Text(feedback).font(.caption).foregroundStyle(.orange) }
+            }
+        }
     }
 
     private func importSound() {
