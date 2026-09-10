@@ -4,17 +4,19 @@
 
 <p align="center"><strong>Hear completion. Return exactly where the work happened.</strong></p>
 
-<p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.1.0">Download v0.1.0</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
+<p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.2.2">Download v0.2.2</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
 
 Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
 
 HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.
 
-> Project status: v0.1 source-first developer release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
+> Project status: v0.2.2 release for macOS 14+ and HAPI 0.29.0. The required Hub API is not yet part of upstream HAPI; this repository includes the reviewed integration patch.
 
-## v0.2 implementation candidate
+## v0.2.2
 
-The next version adds a single native settings window for real-session selection, title keywords, short-task filtering and quiet hours. It is implemented on `feature/v0.2-notification-settings` and awaits the manual acceptance/deployment gates; v0.1.0 remains the public release. See [v0.2 release notes](docs/releases/v0.2.0.md), [acceptance evidence](docs/management/V0_2_ACCEPTANCE.md) and the [Hub contract](integrations/hapi/README.md). The updated cumulative Hub patch is required for the conversation catalog and measured turn duration.
+Native settings now have two tabs for conversation/keyword rules, task duration, quiet hours and calibrated phone-style notification sounds with volume/custom import. Companion can persist its own Hub configuration directory independently of existing Runners. See [release notes](docs/releases/v0.2.2.md) and [updating an existing Mac](docs/agents/UPDATE_MAC.md). The reviewed Hub integration is still required for notifications, the session catalog and measured turn duration.
+
+There is no in-app update notification or one-click updater yet. Downloaded app updates need no Xcode; HAPI Safe Updater handles server updates only.
 
 ## Why it exists
 
@@ -48,7 +50,7 @@ cd ~/develop/hapi-companion
 ./install-local.sh
 ```
 
-Tagged releases also include an ad-hoc signed universal preview build, but it is not Apple-notarized. For security and predictable macOS permissions, the source installer above is the recommended path.
+Tagged releases also include an ad-hoc signed universal application, but it is not Apple-notarized. For security and predictable macOS permissions, the source installer above is the recommended path.
 
 ### Multiple HAPI configurations / choosing a Hub
 

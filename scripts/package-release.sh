@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT="${0:A:h:h}"
 VERSION="${1:-0.1.0}"
-DERIVED="$ROOT/.build"
+# A release must not inherit removed resources or debug leftovers from local builds.
+DERIVED="$(mktemp -d "${TMPDIR:-/tmp}/hapi-companion-release.XXXXXX")"
+trap 'rm -rf "$DERIVED"' EXIT
 APP="$DERIVED/Build/Products/Release/HAPI Companion.app"
 DIST="$ROOT/dist/v$VERSION"
 
