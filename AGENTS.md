@@ -54,6 +54,13 @@ If asked to deploy, first confirm the intended provider/environment unless `docs
 - Do not mark cross-project integration complete or declare a changed patch safe for automatic production upgrades until that handoff is confirmed. Companion-only changes that leave the patch and contract unchanged do not require a new patch pin.
 - Upgrade acceptance and rollback requirements are defined in `integrations/hapi/README.md`; preserve single SSE + explicit ACK with no polling. Never include credentials in handoff messages, logs or evidence.
 
+## Mac application updater rules
+
+- For Mac app releases, read `docs/agents/RELEASE_MAC_UPDATES.md`. Keep update signing separate from server patch pins.
+- Use pinned Sparkle, signed feeds and archives, monotonically increasing build numbers, and immutable release ZIPs. Never export or print the private update signing key.
+- Verify actual native download/install/relaunch and Hub reconnection, retain rollback/settings, and remove acceptance feed overrides. Shell download success alone is insufficient.
+- Publish verified archives before their signed feed; verify CDN propagation from the Mac before declaring a release done. No paid service or unrelated domain change is authorized by this updater design.
+
 ## Branch and release rules
 
 - Record one canonical integration branch; do not infer that the current or default branch is automatically canonical.

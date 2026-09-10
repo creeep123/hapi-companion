@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.2.2 is publicly released and installed on the current Mac after user acceptance on 2026-09-10. Download checksums, 45 tests, live connection, real catalog and test reminder passed. [Release evidence and rollback](../deployments/V0_2_2_MAC_RELEASE.md). No Hub/updater deployment was included.
+**Current posture:** v0.3.1 free application updates passed an actual download/install/relaunch on this Mac with Hub reconnection and settings retained. Preparing canonical-feed verification and stable promotion; v0.2.2 remains the recommended public stable release until then. [Evidence](../deployments/V0_3_1_MAC_UPDATES.md).
 
 ## Active feature — selectable notification sounds
 

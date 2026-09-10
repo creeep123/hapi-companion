@@ -2,7 +2,7 @@
 
 ## 当前能力
 
-v0.2.2 需要手动更新：应用内没有检查更新、新版本提醒或一键升级。下载入口：[最新正式版](https://github.com/creeep123/hapi-companion/releases/latest)。GitHub 账号可选择只订阅仓库 Releases 的通知；这不是 Companion 自己的更新提醒。
+v0.3.1 起支持免费应用内更新：打开“声音与设置” → “检查更新…”，或者开启“自动检查新版本”。发现新版后点击安装，下载校验完成再点击“安装并重新启动”。旧的 v0.2.2 必须先按下文手动安装一次新版。下载入口：[最新正式版](https://github.com/creeep123/hapi-companion/releases/latest)。GitHub 账号可选择只订阅仓库 Releases 的通知；这不是 Companion 自己的更新提醒。
 
 HAPI Safe Updater 只负责服务器 Hub。本流程只替换 Mac Companion，不修改 Hub、Runner、settings.json 或 updater。
 
@@ -22,8 +22,10 @@ HAPI Safe Updater 只负责服务器 Hub。本流程只替换 Mac Companion，�
 
 有完整 Xcode 和 XcodeGen 的设备，可以在干净 checkout 切到已发布 tag，先保存 app 回滚备份，再按 README 运行 doctor 与 install-local.sh。沿用原有配置目录，不要运行 Runner 启停命令。
 
-## 后续建议（尚未实现）
+## 应用内更新的边界
 
-接入 [Sparkle](https://sparkle-project.org/documentation/)：在“声音与设置”页提供版本号与“检查更新”，可选后台检查；发现版本后展示说明，用户点“下载并重启”完成更新。需维护 HTTPS 更新清单、递增 build 版本、更新包签名及恢复路径；正式对外分发应完善 Developer ID 签名与公证。
+采用 Sparkle 2.9.6、公开 GitHub Release 安装包和 jsDelivr 免费分发的签名清单，无需 token、账号、订阅或 Apple 开发者付费会员。默认每天检查；安装需要用户点击，不会静默替换。网络失败、限流或签名失败会终止更新，保留现有版本。
 
-旧客户端不会凭空获得该能力，必须先手动安装一次包含 Sparkle 的版本。不要把此建议写成 v0.2.2 已有功能。
+预览或测试程序不启用更新。普通 app 显示中文更新窗口；新版本提醒不播放任务完成音。现有会话规则、音量、自选文件及 Hub 选择保留。免费 ad-hoc 分发仍不等于 Apple 公证；首次手动安装可能需要系统正常的安全确认。
+
+发布维护者必须遵守 [Mac 更新发布流程](RELEASE_MAC_UPDATES.md)，保持同一更新签名密钥，先验证公开安装包，再发布清单。不要给用户保留测试 SUFeedURL 覆盖，也不要把 Hub updater 的 pin 当成客户端更新签名。
