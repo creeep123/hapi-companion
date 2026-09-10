@@ -21,6 +21,9 @@ struct CompanionSettingsView: View {
                     }
                 }
                 Spacer()
+                if let version = model.updates.availableVersion {
+                    Button("新版 \(version)") { model.updates.checkForUpdates() }
+                }
             }.padding(.horizontal, 24).padding(.vertical, 12)
             Divider()
             if !model.notificationAllowed {
