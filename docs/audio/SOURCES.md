@@ -1,15 +1,27 @@
-# Notification sound provenance
+# Notification sound provenance — revision 2
 
-Original `HapiComplete.aiff` entered in initial commit daa9416. No external source attribution or generator was found in tracked history; its origin is unverified. Preserved unchanged as the existing default.
+The first Kenney pack was rejected during listening acceptance: cues were too short and the mean/peak matching method did not align perceived loudness. Its five bundled playback files have been removed. Original source/license notes remain available in Git history.
 
-New sounds: Kenney, CC0, downloaded 2026-09-10 from the official [Interface Sounds](https://kenney.nl/assets/interface-sounds) and [Digital Audio](https://kenney.nl/assets/digital-audio) pages. Original license texts accompany this file. Digital effects provide retro/pixel-style choices, not recordings from commercial games.
+## Phone notification cues
 
-Converted from OGG to mono 48 kHz PCM16 WAV with ffmpeg. Each source is attenuated so decoded mean level is at most -31.5 dBFS and peak at most -14 dBFS, close to the existing tone (-31.5 mean / -14.1 peak); perceived loudness still requires listening acceptance. No trimming or other edits. Recipe: `ffmpeg -i input.ogg -af volume=<gain>dB -ar 48000 -ac 1 -c:a pcm_s16le output.wav`.
+Five cues now come from the **Android Open Source Project**, pinned to `1cdfff555f4a21f71ccc978290e2e212e2f8b168`. These are actual notification assets, rather than UI click effects. The [package license declaration](https://android.googlesource.com/platform/frameworks/base/+/1cdfff555f4a21f71ccc978290e2e212e2f8b168/data/sounds/Android.bp) explicitly applies Android-Apache-2.0 and lists these media files. Source OGGs are retained in `aosp-originals/`; attribution and Apache 2.0 text are shipped inside the app as `Audio-NOTICE.txt` and `Apache-2.0.txt`.
 
-| Bundled file | Source within pack | Gain | SHA-256 (bundled WAV) |
-|---|---|---|---|
-| SoundConfirmation.wav | interface/confirmation_002.ogg | -16.6 dB | a4a19507934b35229026e0be312f7164c38510e70bf9a49bdc347b7cc7d540e9 |
-| SoundGlass.wav | interface/glass_001.ogg | -13.0 dB | 1527263fbaad9a7168181d522eb7b1edbdcd82354e0cbdce8bd4bcdb6b20d711 |
-| SoundPluck.wav | interface/pluck_001.ogg | -14.0 dB | 2e5a99649b140d25dc996f9bda3dcd80f65fd88c205d26a4ae7f3a2b546b77be |
-| SoundPixel.wav | digital/powerUp4.ogg | -15.0 dB | f27756f83b06869d08c684b0386766fee6727e9192eec650644f66f884dcc5d2 |
-| SoundDigital.wav | digital/threeTone1.ogg | -19.4 dB | 73a48c5f5801e13371348a779a5d51ea8c83b447d9b566ec2d838ec6e0308fd6 |
+| Choice | Source under data/sounds | Duration |
+|---|---|---|
+| 星尘 · Pixie Dust | notifications/pixiedust.ogg | 1.729 s |
+| 月光 · Moonbeam | notifications/moonbeam.ogg | 1.874 s |
+| 双音轻铃 · Tejat | notifications/ogg/Tejat.ogg | 1.200 s |
+| 明亮和弦 · Capella | notifications/ogg/Capella.ogg | 1.379 s |
+| 电子回响 · Ceti Alpha | notifications/ogg/CetiAlpha.ogg | 2.876 s |
+
+Original `HapiComplete.aiff` entered in initial commit daa9416. No external source attribution or generator was found in tracked history. Its bytes remain untouched; the picker now uses a normalized `SoundOriginal.wav` copy (1.650 s).
+
+## Calibration standard and reproducibility
+
+All six playback assets: stereo 48 kHz PCM16, **-23 LUFS integrated ±0.5 LU**, true peak **≤ -1 dBTP**. Measure after stereo conversion with FFmpeg's BS.1770/EBU R128 `loudnorm`, apply constant gain only (no compression, looping, trimming or changing the melody), then independently remeasure the exported WAV. Reject out-of-range outputs. [FFmpeg documentation](https://ffmpeg.org/ffmpeg-filters.html#loudnorm).
+
+Measured results, gains, input/output SHA-256 hashes and durations: [LOUDNESS.json](LOUDNESS.json). Run `python3 scripts/prepare-notification-sounds.py` to regenerate from retained sources, or append `--check` to validate without edits. ffmpeg/ffprobe are build-time tools only, not app dependencies.
+
+The source original measures -25.82 LUFS. All normalized presets at default 80% playback gain measure about -24.94 LUFS (roughly 0.9 LU above that baseline); 100% leaves headroom to be louder. The slider controls app playback only, not system output. At 0%, no sound is attempted. Custom imports retain their original loudness and use the same slider; they are not normalized automatically.
+
+LUFS is a repeatable baseline, not a promise of identical subjective loudness for short cues. Frequency balance, duration and the Mac's speakers matter; human listening acceptance is still required.

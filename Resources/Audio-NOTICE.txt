@@ -1,0 +1,20 @@
+Notification audio adapted from the Android Open Source Project (AOSP).
+Source commit: 1cdfff555f4a21f71ccc978290e2e212e2f8b168
+https://android.googlesource.com/platform/frameworks/base/+/1cdfff555f4a21f71ccc978290e2e212e2f8b168/data/sounds/
+
+Source paths:
+notifications/pixiedust.ogg
+notifications/moonbeam.ogg
+notifications/ogg/Tejat.ogg
+notifications/ogg/Capella.ogg
+notifications/ogg/CetiAlpha.ogg
+
+These assets are declared under Android-Apache-2.0 by data/sounds/Android.bp.
+Apache License 2.0 is included as Apache-2.0.txt.
+Modified for HAPI Companion: decoded to stereo 48 kHz PCM16 WAV and
+constant-gain loudness normalized to -23 LUFS. No melody or timing edits.
+This application is not affiliated with or endorsed by Google or Android.
+
+The original HapiComplete.aiff is an existing project asset of unverified
+external provenance. Its source bytes are retained; SoundOriginal.wav is
+its calibrated playback copy.

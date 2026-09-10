@@ -40,12 +40,23 @@ struct CompanionSettingsView: View {
                             Button("试听") { model.sounds.play() }
                         }
                         HStack {
+                            Text("音量").font(.callout)
+                            Slider(value: Binding(get: { model.sounds.volume }, set: { model.sounds.volume = $0 }), in: 0...1, step: 0.01)
+                                .accessibilityLabel("提醒音量")
+                            Text("\(Int((model.sounds.volume * 100).rounded()))%")
+                                .monospacedDigit().frame(width: 42, alignment: .trailing)
+                        }
+                        Text(model.sounds.volume == 0 ? "已静音，仍显示通知。" : "只调整 Companion；最终音量也受系统音量影响。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
                             Button(model.sounds.customName == nil ? "导入音效…" : "替换自选音效…", action: importSound)
                             if model.sounds.customName != nil { Button("移除自选", action: model.sounds.removeCustom) }
                         }
                         Text("本机通用，自动保存。支持 WAV、AIFF、MP3、M4A，最长 10 秒、最大 10 MB。")
                             .font(.caption).foregroundStyle(.secondary)
-                        Text("试听会立即播放声音，不受勿扰规则限制。")
+                        Text("预置音效已统一响度；自选文件保留原始响度，可用上方音量调节。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(model.sounds.volume == 0 ? "试听已静音；调高音量后再试听。" : "试听会立即播放声音，不受勿扰规则限制。")
                             .font(.caption).foregroundStyle(.secondary)
                         if let feedback = model.sounds.feedback { Text(feedback).font(.caption).foregroundStyle(.orange) }
                     }
@@ -159,12 +170,12 @@ struct CompanionSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Button("测试提醒") { Task { await model.sendTestNotification() } }
-                        .help("发送一次测试横幅和声音，不受筛选和勿扰规则限制")
+                        .help("使用当前音量发送测试提醒，不受筛选和勿扰规则限制")
                     Spacer()
                     Text(store.isConfigured ? "✓ 自动保存" : "等待 Hub 配置").font(.caption).foregroundStyle(.secondary)
                 }
                 if let action = model.lastAction { Text(action).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                Text("测试提醒会播放声音，不受勿扰规则限制。")
+                Text("测试提醒使用当前音效和音量，不受勿扰规则限制。")
                     .font(.caption2).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.vertical, 12)
         }

@@ -1,0 +1,61 @@
+{
+  "target_lufs": -23.0,
+  "tolerance_lu": 0.5,
+  "maximum_true_peak_dbtp": -1,
+  "sounds": {
+    "SoundOriginal": {
+      "lufs": -23.01,
+      "true_peak_dbtp": -10.78,
+      "duration_seconds": 1.6501,
+      "source": "Resources/HapiComplete.aiff",
+      "source_sha256": "b337d8e01066c30de2f296763609b7e488bb3c6ea817aa875ee999d708433cf9",
+      "gain_db": 2.82,
+      "sha256": "2e46ee1d2126e06e838713fd6920bc992d1fb429667fafb5125c9886259059ae"
+    },
+    "SoundPixieDust": {
+      "lufs": -22.99,
+      "true_peak_dbtp": -13.83,
+      "duration_seconds": 1.7288,
+      "source": "docs/audio/aosp-originals/pixiedust.ogg",
+      "source_sha256": "e325e573e3e5d66c4ea3b6b33dcc5fbde30d849632aadf958cec0e5662f025dd",
+      "gain_db": -10.32,
+      "sha256": "9d071b0aef7c77a5236b225435bdcf79de7a3dbfd56f619dd72db486fc9d6ae4"
+    },
+    "SoundMoonbeam": {
+      "lufs": -23.01,
+      "true_peak_dbtp": -12.13,
+      "duration_seconds": 1.8743,
+      "source": "docs/audio/aosp-originals/moonbeam.ogg",
+      "source_sha256": "9067df8132abcd13a955c9499f3389cdbe83061ed8eb0b43916eb0fc4575d2bd",
+      "gain_db": -3.65,
+      "sha256": "790be7e1f75a540a90fcd59cc5f9d9522bd8558b5eec880d8ba2f269c09485c6"
+    },
+    "SoundTejat": {
+      "lufs": -22.99,
+      "true_peak_dbtp": -9.12,
+      "duration_seconds": 1.2,
+      "source": "docs/audio/aosp-originals/Tejat.ogg",
+      "source_sha256": "e21a04b2b4ab80f43adec00c9171f9d47d2aa4089105aa2a74cdca93b9378d5a",
+      "gain_db": -9.06,
+      "sha256": "50086cb10bbb229736a4face66f22fefc20a1203798806feb6a842ee75e65834"
+    },
+    "SoundCapella": {
+      "lufs": -23.02,
+      "true_peak_dbtp": -11.71,
+      "duration_seconds": 1.3794,
+      "source": "docs/audio/aosp-originals/Capella.ogg",
+      "source_sha256": "cf23a4477c741dcea8aa893139c6aaa889a9c565bcb73bb584f1e0a3adc78b43",
+      "gain_db": -4.43,
+      "sha256": "6a3ef23a2649b8b28e49c81ea3f1fa6c2d569c283d87199c12125ff378b71f41"
+    },
+    "SoundCetiAlpha": {
+      "lufs": -23.03,
+      "true_peak_dbtp": -10.05,
+      "duration_seconds": 2.8764,
+      "source": "docs/audio/aosp-originals/CetiAlpha.ogg",
+      "source_sha256": "4ca3ec88140119670c04420cd2ee247f7cd759108b4b15ce0fa435846cfb7a1b",
+      "gain_db": 1.89,
+      "sha256": "8265aaca83b1bb7745c3b462095a058af26e98937e2e1f8ee98a6bd2244df015"
+    }
+  }
+}

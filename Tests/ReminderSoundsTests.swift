@@ -36,18 +36,18 @@ final class ReminderSoundsTests: XCTestCase {
         for preset in ReminderSoundPreset.all {
             let url = try XCTUnwrap(bundle.url(forResource: preset.resource, withExtension: preset.ext))
             let sound = try XCTUnwrap(NSSound(contentsOf: url, byReference: false))
-            XCTAssertGreaterThan(sound.duration, 0)
-            XCTAssertLessThanOrEqual(sound.duration, 10)
+            XCTAssertGreaterThanOrEqual(sound.duration, 1)
+            XCTAssertLessThanOrEqual(sound.duration, 3)
         }
     }
 
     func testDefaultPersistenceAndUnknownSettingRecovery() {
         let first = store()
         XCTAssertEqual(first.selected, "original")
-        first.select("pixel")
-        XCTAssertEqual(store().selected, "pixel")
+        first.select("pixiedust")
+        XCTAssertEqual(store().selected, "pixiedust")
         first.select("not-a-preset")
-        XCTAssertEqual(first.selected, "pixel")
+        XCTAssertEqual(first.selected, "pixiedust")
         defaults.set(Data("{\"selected\":\"future-preset\"}".utf8), forKey: ReminderSounds.key)
         XCTAssertEqual(store().selected, "original")
         defaults.set(Data("broken".utf8), forKey: ReminderSounds.key)
@@ -64,7 +64,7 @@ final class ReminderSoundsTests: XCTestCase {
         XCTAssertEqual(second.selected, "custom")
         XCTAssertEqual(second.customName, "my sound")
         var played: URL?
-        XCTAssertTrue(second.play { played = $0; return true })
+        XCTAssertTrue(second.play { url, _ in played = url; return true })
         let copy = try XCTUnwrap(played)
         XCTAssertNotEqual(copy, original)
         XCTAssertEqual(try Data(contentsOf: copy), bytes)
@@ -120,14 +120,14 @@ final class ReminderSoundsTests: XCTestCase {
         try first.importSound(from: source())
         try FileManager.default.removeItem(at: root.appending(path: "managed"))
         var attempts: [String] = []
-        XCTAssertTrue(first.play { url in
+        XCTAssertTrue(first.play { url, _ in
             attempts.append(url.lastPathComponent)
             return FileManager.default.fileExists(atPath: url.path)
         })
         XCTAssertEqual(attempts.count, 2)
-        XCTAssertEqual(attempts.last, "HapiComplete.aiff")
+        XCTAssertEqual(attempts.last, "SoundOriginal.wav")
         XCTAssertNotNil(first.feedback)
-        XCTAssertFalse(first.play { _ in false })
+        XCTAssertFalse(first.play { _, _ in false })
     }
 
     func testMalformedStoredPathCannotPlayOrDeleteOutsideManagedDirectory() throws {
@@ -147,10 +147,60 @@ final class ReminderSoundsTests: XCTestCase {
         let blockedDirectory = root.appending(path: "managed")
         try Data("a file, not a directory".utf8).write(to: blockedDirectory)
         let first = store()
-        first.select("digital")
+        first.select("cetialpha")
         XCTAssertThrowsError(try first.importSound(from: original))
-        XCTAssertEqual(store().selected, "digital")
+        XCTAssertEqual(store().selected, "cetialpha")
         XCTAssertNil(first.customName)
         XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
+    }
+
+    func testVolumeMigratesWithoutChangingOldSoundSettingsAndPersists() throws {
+        let first = store()
+        try first.importSound(from: source())
+        let existingMetadata = defaults.data(forKey: ReminderSounds.key)
+        XCTAssertEqual(first.volume, 0.8)
+        first.volume = 0.37
+        XCTAssertEqual(store().volume, 0.37)
+        XCTAssertEqual(defaults.data(forKey: ReminderSounds.key), existingMetadata)
+        XCTAssertEqual(store().selected, "custom")
+        first.removeCustom()
+        XCTAssertEqual(store().volume, 0.37)
+    }
+
+    func testImportKeepsVolumeAndFallbackReceivesSameGain() throws {
+        let first = store()
+        first.volume = 0.42
+        try first.importSound(from: source())
+        XCTAssertEqual(first.volume, 0.42)
+        var gains: [Float] = []
+        XCTAssertTrue(first.play { _, gain in
+            gains.append(gain)
+            return gains.count == 2
+        })
+        XCTAssertEqual(gains, [0.42, 0.42])
+    }
+
+    func testZeroVolumeIsIntentionalSilenceEvenWhenAudioMissing() {
+        let first = store()
+        first.select("moonbeam")
+        first.volume = 0
+        XCTAssertTrue(first.play { _, _ in XCTFail("Muted playback must not open an audio device"); return false })
+        XCTAssertEqual(store().volume, 0)
+        first.volume = 0.1
+        XCTAssertFalse(first.play { _, _ in false }, "Nonzero playback failures must remain retryable")
+    }
+
+    func testVolumeBoundsAndMalformedPersistedValues() {
+        let first = store()
+        first.volume = 2
+        XCTAssertEqual(first.volume, 1)
+        first.volume = -1
+        XCTAssertEqual(first.volume, 0)
+        first.volume = .nan
+        XCTAssertEqual(first.volume, 0.8)
+        defaults.set(3, forKey: ReminderSounds.volumeKey)
+        XCTAssertEqual(store().volume, 1)
+        defaults.set("invalid", forKey: ReminderSounds.volumeKey)
+        XCTAssertEqual(store().volume, 0.8)
     }
 }
