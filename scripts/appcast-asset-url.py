@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Replace only the new enclosure URL, then let Sparkle re-sign the feed."""
 import json
+import hashlib
 import re
 import subprocess
 import sys
@@ -17,6 +18,12 @@ assets = [a for a in release["assets"] if a["name"] == name]
 if len(assets) != 1:
     raise SystemExit("Publish exactly one matching app ZIP before preparing the feed")
 asset = assets[0]
+archive = Path(path).parent / name
+if asset["size"] != archive.stat().st_size:
+    raise SystemExit("Published asset size differs from local archive")
+digest = asset.get("digest")
+if not digest or digest != "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest():
+    raise SystemExit("Published asset digest differs from local archive")
 feed = Path(path).read_text()
 old = f'https://github.com/creeep123/hapi-companion/releases/download/v{version}/{name}'
 if feed.count(old) != 1:
