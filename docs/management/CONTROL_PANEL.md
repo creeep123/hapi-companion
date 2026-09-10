@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.3.1 free application updates passed an actual download/install/relaunch on this Mac with Hub reconnection and settings retained. Preparing canonical-feed verification and stable promotion; v0.2.2 remains the recommended public stable release until then. [Evidence](../deployments/V0_3_1_MAC_UPDATES.md).
+**Current posture:** v0.3.1 is publicly released and installed on this Mac. Free new-version reminders and in-app installation passed real download/relaunch, signed-feed/archive checks, Hub reconnection and retained settings; 47 tests pass. [Release evidence and rollback](../deployments/V0_3_1_MAC_UPDATES.md). No Hub/updater deployment.
 
 ## Active feature — selectable notification sounds
 
@@ -21,7 +21,7 @@ Independent technical-plan and implementation reviews are complete; both impleme
 
 Scope: [V0.2 specification](../specs/V0_2_NOTIFICATION_SETTINGS.md). Evidence and exact manual steps: [V0.2 acceptance](V0_2_ACCEPTANCE.md). Candidate notes: [v0.2.0](../releases/v0.2.0.md). At that earlier milestone, canonical `main` was `cb6b48a`; feature PR #1 and installation fixes PR #2/#3 are merged.
 
-**Next action:** other Macs can follow the public [update guide](../agents/UPDATE_MAC.md). Consider in-app update checks for a later version. Separate the remaining second-Mac visual acceptance from this Mac’s completed release. Updater implementation remains in `hapi-safe-updater`.
+**Next action:** other Macs can follow the public [update guide](../agents/UPDATE_MAC.md). New clients have daily optional update reminders and in-app installation; old clients require one manual bootstrap. Separate the remaining second-Mac visual acceptance from this Mac’s completed release. Updater implementation remains in `hapi-safe-updater`.
 
 New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). Acceptance requires either public repository to lead an Agent through Mac Companion, a patched Hub and verified safe-upgrade configuration; an unmerged local document does not meet that requirement.
 
@@ -31,21 +31,19 @@ Companion now persists its own configuration directory and displays the selected
 
 ## Mac application updates
 
-User authorized v0.3.1 implementation and local installation: free Sparkle-based reminders and click-to-install updates, hosted using existing public GitHub distribution. [Scope and acceptance](../specs/MAC_UPDATES.md). Work in progress; retain current v0.2.2 until verified.
-
-v0.2.2 uses manual app replacement; it does not check for releases or update itself. [Existing-Mac update instructions](../agents/UPDATE_MAC.md) cover prebuilt installation without Xcode and preservation of profiles/settings. Sparkle is the proposed future client updater; implementation is not part of this release. Server HAPI Safe Updater remains a separate project.
+Completed in v0.3.1: open “声音与设置” for the version number, “检查更新…” and optional daily checks. New versions prompt the user to download, verify, install and relaunch. No subscription, account or paid server; Sparkle + public GitHub archives + free jsDelivr signed-feed delivery. No automatic installation without the user's choice. Existing v0.2.2 clients need one manual update to gain this capability. [User/Agent update guide](../agents/UPDATE_MAC.md), [release maintenance](../agents/RELEASE_MAC_UPDATES.md), [acceptance](../deployments/V0_3_1_MAC_UPDATES.md).
 
 ## 1. Current status
 
 | Area | Status | Evidence | Next action |
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
-| macOS client | Green | v0.2.2 universal app; 45 tests pass; current Mac runtime verified | Preserve URL-origin and delivery guarantees |
+| macOS client | Green | v0.3.1 universal app; 47 tests pass; real in-app upgrade and current Mac runtime verified | Preserve URL-origin and delivery guarantees |
 | Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
-| Distribution | Yellow | v0.2.2 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
-| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, release v0.2.2 verified | Maintain release provenance |
+| Distribution | Yellow | v0.3.1 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
+| Repository | Green | Public `creeep123/hapi-companion`, canonical `main`, release v0.3.1 verified | Maintain release provenance |
 
 ## 2. Product boundary
 
@@ -57,7 +55,8 @@ v0.2.2 uses manual app replacement; it does not check for releases or update its
 - click-through to the exact HAPI session;
 - reuse of an existing Microsoft Edge HAPI PWA window;
 - agent-readable installation and operational documentation;
-- one lightweight settings window with per-session/keyword rules, task duration filtering and quiet hours (V0.2).
+- one lightweight settings window with per-session/keyword rules, task duration filtering and quiet hours (V0.2);
+- free Mac application update reminders and user-confirmed signed installation (V0.3.1).
 
 ### Out of scope
 
@@ -100,7 +99,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | HAPI integration baseline | `tiann/hapi@d3d4fd1706564782e9a58b917df4e0677f65051f` |
 | Compatible HAPI line | 0.29.0 reference baseline |
 | Current local production app | `~/Applications/HAPI Companion.app` |
-| Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.2.2` |
+| Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.3.1` |
 | Rollback for local app | reinstall the previously known-good app bundle |
 | Hub rollback | prior Hub binary/container plus pre-v26 database backup |
 
