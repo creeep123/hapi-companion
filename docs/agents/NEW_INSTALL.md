@@ -4,6 +4,8 @@
 
 > 请为我的 Mac 和自有服务器配置 HAPI 完成提醒及后续安全升级。先阅读仓库 AGENTS.md、README.md 和新环境安装引导，并沿文档链接检查另一个项目。识别已有安装、目标服务器和访问方式；安装 Mac Companion，验证服务器使用兼容补丁的 Hub，再配置 updater 的补丁 pin 与升级验收。不要输出凭据，不要直接用无补丁的官方包覆盖 Hub。逐项报告实际验证结果和未完成项。
 
+已有 Mac 只更新 Companion：请读 [Mac 更新流程](UPDATE_MAC.md)，不要重复安装服务器组件。
+
 ## 两个仓库，各自职责
 
 - [HAPI Companion](https://github.com/creeep123/hapi-companion)：Mac 通知应用、Hub 权威补丁、接口契约与测试。

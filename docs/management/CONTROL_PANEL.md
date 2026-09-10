@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.1.0 is published. The standalone source, Agent-first installer, Hub integration patch, Signal Buddy identity, universal release build, and integrity manifests are complete and verified from both a fresh clone and downloaded GitHub release assets.
+**Current posture:** v0.2.2 release authorized on 2026-09-10 after sound and tab-layout acceptance. Preparing a clean universal app, public release assets and local installation. No Hub/updater deployment is included.
 
 ## Active feature — selectable notification sounds
 
@@ -11,7 +11,7 @@ Revision 2 implements the user's listening feedback: the five short effects are 
 
 ## Active UI refinement — settings tabs
 
-User requested clearer grouping and lower prominence for sounds. Keep two tabs only: “提醒规则” (default: sessions, duration, quiet hours) and “声音与设置” (system settings followed by sounds). Connection status and test/autosave footer remain shared. Preserve all existing values, search text and keyword drafts when switching; no configuration migration or behavior changes. Acceptance: [settings tabs](../specs/SETTINGS_TABS.md).
+User requested clearer grouping and lower prominence for sounds. Keep two tabs only: “提醒规则” (default: sessions, duration, quiet hours) and “声音与设置” (system settings followed by sounds). Connection status and test/autosave footer remain shared. Preserve all existing values, search text and keyword drafts when switching; no configuration migration or behavior changes. User accepted this layout and authorized release. Acceptance: [settings tabs](../specs/SETTINGS_TABS.md).
 
 ## Active iteration — V0.2 notification settings
 
@@ -28,6 +28,10 @@ New-environment guidance: [Agent installation entry](../agents/NEW_INSTALL.md). 
 ## Active fix — isolated HAPI configuration selection
 
 Companion now persists its own configuration directory and displays the selected Hub host. PR #6 is merged at `b67e9ef`; 32 Swift tests, seven shell checks and the Release build passed. Doctor, installation and Finder/login startup share the selection. A [prebuilt installation candidate](https://github.com/creeep123/hapi-companion/releases/tag/v0.2.0-candidate.b67e9ef) is available for the second Mac, which has command-line tools but no full Xcode. The second Mac now runs the candidate against the intended Hub. Restarting with no HAPI_HOME still produces the app’s own “SSE connected status=200” log; both Runner settings files are byte-identical to their pre-install copies. Login startup is registered and a persistent rollback archive is retained. The peer cannot read native UI, so the real session list and visual notification flow remain pending human acceptance; v0.1.0 remains the stable release. It must never overwrite a Runner's settings or restart either Runner. Scope and acceptance: [configuration directory specification](../specs/CONFIGURATION_DIRECTORY.md). No Hub patch or updater pin change is required.
+
+## Mac application updates
+
+v0.2.2 uses manual app replacement; it does not check for releases or update itself. [Existing-Mac update instructions](../agents/UPDATE_MAC.md) cover prebuilt installation without Xcode and preservation of profiles/settings. Sparkle is the proposed future client updater; implementation is not part of this release. Server HAPI Safe Updater remains a separate project.
 
 ## 1. Current status
 
