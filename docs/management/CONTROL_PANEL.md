@@ -7,7 +7,7 @@
 
 ## Active feature — selectable notification sounds
 
-User approved implementation on 2026-09-10. Add named short built-in sounds (including retro digital sounds), explicit preview and one replaceable custom audio file in the existing settings window. Choice is local to this Mac and survives restarts; existing reminders keep the original sound by default. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). Implementation complete: 41 Swift tests and the universal Release build pass. Six choices (original plus five CC0 samples), preview, managed custom-file import and fallback are ready. Native settings interaction was checked in isolated preview. Next: human listening acceptance, then approved normal-app installation for real completion verification.
+Revision 2 implements the user's listening feedback: the five short effects are replaced by actual AOSP phone-notification cues (1.2–2.9 seconds), and all six presets including the original timbre have calibrated playback copies. Their measured loudness differs by only 0.04 LU, a unit for comparing audio level. An app-only 0–100% volume slider defaults to 80% and survives restarts. Custom imports use the same slider but retain their own loudness. 45 Swift tests and automated audio measurements pass. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). Next: listen to the revised candidate and check the slider before replacing the normal notification app.
 
 ## Active iteration — V0.2 notification settings
 

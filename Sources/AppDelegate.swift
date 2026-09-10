@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
             menu.addItem(withTitle: "提醒设置…", action: #selector(showSettings), keyEquivalent: ",").target = self
-            menu.addItem(withTitle: "测试提醒（会播放声音）", action: #selector(testReminder), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "测试提醒（使用当前音量）", action: #selector(testReminder), keyEquivalent: "").target = self
             menu.addItem(NSMenuItem.separator())
             menu.addItem(withTitle: "退出 HAPI Companion", action: #selector(quit), keyEquivalent: "q").target = self
             statusItem?.menu = menu
