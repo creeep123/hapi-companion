@@ -7,7 +7,11 @@
 
 ## Active feature — selectable notification sounds
 
-Revision 2 implements the user's listening feedback: the five short effects are replaced by actual AOSP phone-notification cues (1.2–2.9 seconds), and all six presets including the original timbre have calibrated playback copies. Their measured loudness differs by only 0.04 LU, a unit for comparing audio level. An app-only 0–100% volume slider defaults to 80% and survives restarts. Custom imports use the same slider but retain their own loudness. 45 Swift tests and automated audio measurements pass. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). Next: listen to the revised candidate and check the slider before replacing the normal notification app.
+Revision 2 implements the user's listening feedback: the five short effects are replaced by actual AOSP phone-notification cues (1.2–2.9 seconds), and all six presets including the original timbre have calibrated playback copies. Their measured loudness differs by only 0.04 LU, a unit for comparing audio level. An app-only 0–100% volume slider defaults to 80% and survives restarts. Custom imports use the same slider but retain their own loudness. 45 Swift tests and automated audio measurements pass. Quiet hours and delivery/ACK behavior remain intact. No Hub patch or updater change. Scope and acceptance: [sound selection](../specs/NOTIFICATION_SOUNDS.md). The user accepted the sound functionality on 2026-09-10. Next: reorganize settings into two tabs, with reminder rules first and sounds on the secondary page; prepare a native preview before normal-app replacement.
+
+## Active UI refinement — settings tabs
+
+User requested clearer grouping and lower prominence for sounds. Keep two tabs only: “提醒规则” (default: sessions, duration, quiet hours) and “声音与设置” (system settings followed by sounds). Connection status and test/autosave footer remain shared. Preserve all existing values, search text and keyword drafts when switching; no configuration migration or behavior changes. Acceptance: [settings tabs](../specs/SETTINGS_TABS.md).
 
 ## Active iteration — V0.2 notification settings
 

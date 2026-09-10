@@ -157,3 +157,5 @@ Use **导入音效…** to select a WAV, AIFF, MP3 or M4A file that macOS can de
 The choice is saved locally for this Mac, independently of per-Hub conversation rules; it is not synced to other devices. No Hub patch or updater changes are needed. Exact sources and licenses: [audio provenance](docs/audio/SOURCES.md).
 
 Revision 2 aligns all preset playback files to -23 LUFS (±0.5 LU), with true peak below -1 dBTP. The **音量** slider controls Companion only (0–100%, default 80%) and survives restarts. Zero volume keeps banners but intentionally skips audio; imported files use the slider without automatic loudness normalization.
+
+Settings are grouped into two tabs: **提醒规则** (default: conversations, task duration, quiet hours) and **声音与设置** (system settings followed by sound controls). Connection status and the test/autosave footer are shared. Switching tabs preserves existing values and unsubmitted search/keyword text.
