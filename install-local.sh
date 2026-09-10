@@ -34,7 +34,7 @@ xcodebuild \
   -derivedDataPath "$DERIVED" \
   CODE_SIGNING_ALLOWED=NO \
   build
-codesign --force --deep --sign - "$PRODUCT"
+"$ROOT/scripts/sign-app.sh" "$PRODUCT"
 codesign --verify --deep --strict "$PRODUCT"
 # Copy into an empty staging directory. `ditto` merges into an existing bundle,
 # which can leave obsolete executable files behind and invalidate its seal.

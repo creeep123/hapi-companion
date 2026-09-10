@@ -31,6 +31,8 @@ Companion now persists its own configuration directory and displays the selected
 
 ## Mac application updates
 
+User authorized v0.3.0 implementation and local installation: free Sparkle-based reminders and click-to-install updates, hosted using existing public GitHub distribution. [Scope and acceptance](../specs/MAC_UPDATES.md). Work in progress; retain current v0.2.2 until verified.
+
 v0.2.2 uses manual app replacement; it does not check for releases or update itself. [Existing-Mac update instructions](../agents/UPDATE_MAC.md) cover prebuilt installation without Xcode and preservation of profiles/settings. Sparkle is the proposed future client updater; implementation is not part of this release. Server HAPI Safe Updater remains a separate project.
 
 ## 1. Current status
