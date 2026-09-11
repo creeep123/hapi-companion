@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import CoreImage.CIFilterBuiltins
 
 struct CompanionSettingsView: View {
     private enum SettingsPage { case rules, sound }
@@ -7,6 +8,8 @@ struct CompanionSettingsView: View {
     @State private var page: SettingsPage = .rules
     @State private var search = ""
     @State private var keyword = ""
+    @State private var mobileTestSessionID = ""
+    @State private var confirmMobilePreview = false
     private let coral = Color(red: 0.94, green: 0.37, blue: 0.29)
 
     var body: some View {
@@ -48,19 +51,22 @@ struct CompanionSettingsView: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Button("测试提醒") { Task { await model.sendTestNotification() } }
+                    Button("测试 Mac 提醒") { Task { await model.sendTestNotification() } }
                         .help("使用当前音量发送测试提醒，不受筛选和勿扰规则限制")
                     Spacer()
                     Text(store.isConfigured ? "✓ 自动保存" : "等待 Hub 配置").font(.caption).foregroundStyle(.secondary)
                 }
                 if let action = model.lastAction { Text(action).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                Text("测试提醒使用当前音效和音量，不受勿扰规则限制。")
+                Text("测试 Mac 提醒使用当前音效和音量，不受勿扰规则限制。")
                     .font(.caption2).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.vertical, 12)
         }
         .tint(coral)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: .infinity, minHeight: 620, idealHeight: 800, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name.NSSystemTimeZoneDidChange)) { _ in
+            Task { await model.mobile.timeZoneChanged() }
+        }
     }
 
     private var reminderRules: some View {
@@ -191,6 +197,8 @@ struct CompanionSettingsView: View {
                 }
             }
             Divider()
+            mobileNotifications
+            Divider()
             VStack(alignment: .leading, spacing: 8) {
                 Text("提醒音效").font(.headline)
                 HStack {
@@ -222,6 +230,155 @@ struct CompanionSettingsView: View {
                 if let feedback = model.sounds.feedback { Text(feedback).font(.caption).foregroundStyle(.orange) }
             }
         }
+    }
+
+    @ViewBuilder private var mobileNotifications: some View {
+        let mobile = model.mobile
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("手机通知").font(.headline)
+                Spacer()
+                if mobile.hasPhone && mobile.stage != .awaitingPhone {
+                    Toggle("启用手机通知", isOn: Binding(
+                        get: { mobile.enabled },
+                        set: { value in Task { await mobile.setEnabled(value) } }
+                    )).labelsHidden().toggleStyle(.switch).disabled(mobile.busy || mobile.stage == .removalIncomplete)
+                }
+            }
+            Text("当前版本支持 1 台手机。本版已验证 ntfy Android；iPhone 尚未支持和验收。")
+                .font(.caption).foregroundStyle(.secondary)
+
+            if mobile.keychainUnavailable {
+                Text("无法读取钥匙串中的 Relay 配置。请恢复钥匙串访问后重新打开设置。")
+                    .font(.caption).foregroundStyle(.orange)
+            } else if !mobile.relayPaired {
+                Text("先由安装 Agent 在 Hub 服务器安装 Relay，再用一次性配对码连接。")
+                    .font(.caption).foregroundStyle(.secondary)
+                TextField("Relay HTTPS 地址", text: Binding(get: { mobile.endpointText }, set: { mobile.endpointText = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                SecureField("一次性配对码", text: Binding(get: { mobile.pairingCode }, set: { mobile.pairingCode = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                Text("手机通知将通过公共服务 ntfy.sh 转发。该服务会收到固定的 HAPI 提示和对应会话链接，不会收到会话标题或 AI 回复正文。任何获得订阅地址的人都可能收到后续通知，请勿分享二维码或订阅地址。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("我已了解并继续", isOn: Binding(get: { mobile.privacyAccepted }, set: { mobile.privacyAccepted = $0 }))
+                Button("配对 Relay") { Task { await mobile.pairRelay() } }
+                    .disabled(mobile.busy || !mobile.privacyAccepted)
+            } else if !mobile.hasPhone {
+                Label("Relay 已配对", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                HStack {
+                    Button("添加手机") { Task { await mobile.addPhone(preferences: model.settings.preferences) } }
+                    Button("断开 Relay") { Task { await mobile.disconnectRelay() } }
+                }.disabled(mobile.busy)
+            } else if mobile.stage == .awaitingPhone || mobile.stage == .awaitingRotation {
+                Text("在 ntfy 中订阅此地址").font(.subheadline.weight(.medium))
+                if let value = mobile.topicForQRCode, let image = qrImage(value) {
+                    Image(nsImage: image).interpolation(.none).resizable().frame(width: 150, height: 150)
+                        .accessibilityLabel("ntfy 订阅二维码")
+                }
+                Button("复制主题名称") { mobile.copyTopicName() }
+                Text("手动添加时，不勾选“使用其他服务器”，把复制内容粘贴到 ntfy 的“主题名称”框。主题名称相当于接收凭据，请勿分享。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Picker("测试打开的会话", selection: testSessionBinding) {
+                    ForEach(model.catalog) { session in Text(session.title).tag(session.id) }
+                }.disabled(model.catalog.isEmpty)
+                Button("测试手机通知") { Task { await mobile.testPhone(sessionId: testSessionBinding.wrappedValue) } }
+                    .disabled(mobile.busy || model.catalog.isEmpty || mobile.rulesState != "规则已同步")
+                if mobile.rulesState != "规则已同步" {
+                    Button("重新同步手机配置") { Task { await mobile.sync(preferences: model.settings.preferences) } }
+                        .disabled(mobile.busy)
+                }
+                Text("测试会经过 Relay 和 ntfy，不受会话、时长和勿扰规则限制，也不会创建 Hub 事件。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("我已收到并成功打开会话") { Task { await mobile.confirmPhone() } }
+                    .disabled(mobile.busy || !mobile.testAccepted)
+                Button("取消") { Task { await mobile.cancelOnboarding() } }.disabled(mobile.busy)
+            } else {
+                mobileStatusRows
+                if mobile.stage == .activationUncertain {
+                    Button("重新确认启用状态") { Task { await mobile.refreshStatus() } }.disabled(mobile.busy)
+                }
+                if mobile.needsHubRepair {
+                    Button("修复 Relay 设备连接") { Task { await mobile.repairDevice() } }.disabled(mobile.busy)
+                } else if mobile.canResume {
+                    Button("恢复手机通知") { Task { await mobile.resumeNotifications() } }.disabled(mobile.busy)
+                }
+                Text("手机使用与这台 Mac 相同的提醒规则。停用期间的提醒不会补发。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("在手机通知中显示会话标题和回复摘要", isOn: Binding(
+                    get: { mobile.contentMode == .eventPreview },
+                    set: { enabled in
+                        if enabled { confirmMobilePreview = true }
+                        else { Task { await mobile.setContentMode(.fixed) } }
+                    }
+                ))
+                .disabled(mobile.busy || !mobile.supportsEventPreview)
+                Text(mobile.supportsEventPreview ? mobile.contentModeState : "当前 Relay 不支持此功能，请先升级 Relay")
+                    .font(.caption).foregroundStyle(.secondary)
+                if mobile.conflictRevision != nil && !mobile.conflictDeferred {
+                    HStack {
+                        Button("用这台 Mac 的规则覆盖") { Task { await mobile.sync(preferences: model.settings.preferences, force: true) } }
+                        Button("稍后处理") { mobile.deferConflict() }
+                    }
+                }
+                HStack {
+                    Button("测试手机通知") { Task { await mobile.testPhone(sessionId: testSessionBinding.wrappedValue) } }
+                        .disabled(mobile.busy || model.catalog.isEmpty)
+                    if mobile.stage == .active {
+                        Button("更换订阅地址") { Task { await mobile.rotateTopic(preferences: model.settings.preferences) } }
+                            .disabled(mobile.busy)
+                    }
+                    Button(mobile.stage == .removalIncomplete ? "重试移除" : "移除手机", role: .destructive) {
+                        Task { await mobile.removePhone() }
+                    }.disabled(mobile.busy)
+                }
+            }
+            if mobile.busy { ProgressView().controlSize(.small) }
+            if let message = mobile.message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+        }
+        .alert("允许公共 ntfy 显示标题和摘要？", isPresented: $confirmMobilePreview) {
+            Button("允许并开启") {
+                mobile.grantEventPreviewConsent()
+                Task { await mobile.setContentMode(.eventPreview) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("开启后，公共 ntfy.sh 将收到 HAPI 通知标题和回复摘要，可能包含会话名、Agent 名称或任务内容，服务提供方可能缓存这些内容。关闭只影响后续通知，既有通知不会被远程删除。")
+        }
+    }
+
+    private var mobileStatusRows: some View {
+        let mobile = model.mobile
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("手机通知：\(mobile.enabled ? "已启用" : mobile.stage == .removalIncomplete ? "移除未完成" : "已停用")")
+            Text("Relay：\(mobile.relayReachable ? "可连接" : "无法连接")")
+            Text("规则：\(mobile.rulesState)（本机版本 \(mobile.localPolicyRevision)\(mobile.syncedPolicyRevision.map { "，手机版本 \($0)" } ?? "")）")
+            if let date = mobile.syncedAt { Text("最近同步：\(date.formatted()) · \(mobile.syncedTimeZone ?? TimeZone.current.identifier)") }
+            if let date = mobile.lastNtfyAcceptedAt { Text("最近一次 ntfy 接收：\(date.formatted())") }
+            Text("Hub 流：\(mobile.streamConnected ? "已连接" : "未连接")\(mobile.lastAckSequence.map { " · 最近 ACK \($0)" } ?? "")")
+            if let attention = mobile.attentionMessage { Text("需要处理：\(attention)").foregroundStyle(.orange) }
+            Text("ntfy 已接收不代表手机已显示。")
+        }.font(.caption).foregroundStyle(.secondary)
+    }
+
+    private var testSessionBinding: Binding<String> {
+        Binding(get: {
+            if model.catalog.contains(where: { $0.id == mobileTestSessionID }) { return mobileTestSessionID }
+            if let selected = model.settings.preferences.selectedSessionIDs.first,
+               model.catalog.contains(where: { $0.id == selected }) { return selected }
+            return model.catalog.first?.id ?? ""
+        }, set: { mobileTestSessionID = $0 })
+    }
+
+    private func qrImage(_ value: String) -> NSImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(value.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let representation = NSCIImageRep(ciImage: scaled)
+        let image = NSImage(size: representation.size)
+        image.addRepresentation(representation)
+        return image
     }
 
     private func importSound() {

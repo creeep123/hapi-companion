@@ -1,0 +1,37 @@
+[Unit]
+Description=HAPI Companion Mobile Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hapi-mobile-relay
+Group=hapi-mobile-relay
+ExecStart=/opt/hapi-mobile-relay/current/hapi-mobile-relay serve
+Environment=HAPI_MOBILE_RELAY_STATE=/var/lib/hapi-mobile-relay/state.json
+Environment=HAPI_MOBILE_RELAY_HOST=127.0.0.1
+Environment=HAPI_MOBILE_RELAY_PORT=8789
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectHostname=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/hapi-mobile-relay
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

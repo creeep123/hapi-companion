@@ -1,9 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-12
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.3.1 is publicly released and installed on this Mac. Free new-version reminders and in-app installation passed real download/relaunch, signed-feed/archive checks, Hub reconnection and retained settings; 47 tests pass. [Release evidence and rollback](../deployments/V0_3_1_MAC_UPDATES.md). No Hub/updater deployment.
+
+## Deployment candidate — V0.4 Android exact-session notifications
+
+The user approved a lightweight Android channel after an OPPO Find X9 Pro on ColorOS 16.0.10 received an ntfy notification and opened the exact HAPI PWA session with one tap. The production Relay is live at the approved endpoint and preserves one durable SSE plus explicit ACK with no polling while reusing the Mac reminder rules. Fixed, non-sensitive notification text remains the default. V0.4.1 adds an optional, separately confirmed mode that sends the same HAPI event title and reply summary shown by the Mac; the UI checks Relay capability first, keeps the choice per Hub and preserves an unsynchronized privacy-off intent across conflicts and restarts. The Relay sanitizes and limits those two fields, rebuilds the exact-session click URL, and never persists notification content. Local verification passes 70 Mac tests and 91 Relay tests, plus typecheck, fake-provider smoke and self-contained Linux x64 package smoke. The Hub patch remains byte-for-byte unchanged at its pinned SHA-256, so no updater pin handoff is required. V0.4.1 Relay deployment, native Mac installation and a real matching-content phone notification are the remaining acceptance steps. Scope: [V0.4 specification](../specs/V0_4_ANDROID_NOTIFICATIONS.md). Architecture: [ADR 0005](../adr/0005-mobile-notification-relay.md). Operations: [Relay runbook](../deployments/V0_4_MOBILE_RELAY_RUNBOOK.md).
 
 ## Active feature — selectable notification sounds
 
@@ -57,12 +61,13 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 - agent-readable installation and operational documentation;
 - one lightweight settings window with per-session/keyword rules, task duration filtering and quiet hours (V0.2);
 - free Mac application update reminders and user-confirmed signed installation (V0.3.1).
+- optional one-phone Android notification delivery through a Companion-owned VM Relay and the official ntfy app (V0.4 candidate).
 
 ### Out of scope
 
 - a replacement HAPI client or runner;
 - SQLite or HTTP polling;
-- mobile clients in the initial release;
+- a replacement mobile HAPI client;
 - Chrome/Safari PWA-window automation in the initial release;
 - a hosted relay service;
 - automatic production Hub patching or deployment.
@@ -111,6 +116,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0 brand baseline | Done | Signal Buddy baseline is approved; SVG/PNG/ICNS/menu-bar assets and rules are committed |
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
+| V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | Future Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 

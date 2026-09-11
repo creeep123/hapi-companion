@@ -1,0 +1,13 @@
+{
+  "name": "hapi-companion-mobile-relay",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "smoke": "bun run smoke/fake-provider.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/hapi-mobile-relay"
+  },
+  "devDependencies": { "typescript": "5.9.2", "@types/bun": "1.2.21" }
+}
