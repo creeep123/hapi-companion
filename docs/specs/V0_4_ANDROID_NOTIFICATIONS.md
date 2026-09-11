@@ -1,6 +1,6 @@
 # V0.4 — Android notifications with exact-session opening
 
-Status: design review. Owner: creeep123. Canonical branch: `main`. Work branch: `feature/v0.4-mobile-notifications`.
+Status: deployment candidate. Owner: creeep123. Canonical branch: `main`. Work branch: `feature/v0.4-mobile-notifications`.
 
 ## Product outcome
 
@@ -39,11 +39,11 @@ Relay installation/pairing and phone onboarding are separate stages. An installa
 
 1. “添加手机” creates a cryptographically random topic and a disabled mobile receiver configuration. A toggle appears only after setup succeeds. Secrets are never shown in logs or ordinary status text.
 2. The app shows both a QR containing the documented `ntfy://ntfy.sh/<topic>` deep link and “复制订阅地址”. The user may scan with the system camera or paste the address into ntfy. QR recognition is a required real-device acceptance item because the earlier experiment used manual topic entry; the copy path must work independently.
-3. “测试手机通知” sends through the real VM worker, bypasses reminder rules and does not create a Hub event. Success means ntfy accepted the message; the UI asks the user to verify receipt and exact-session opening. It does not claim phone display delivery. The existing action is renamed “测试 Mac 提醒”.
+3. “测试手机通知” sends a selected real catalog session ID through the VM worker, bypasses reminder rules and does not create a Hub event. Relay applies the same strict click reconstruction as production. Success means ntfy accepted the message; the UI asks the user to verify receipt and exact-session opening. It does not claim phone display delivery. The existing action is renamed “测试 Mac 提醒”.
 4. The user confirms “我已收到并成功打开会话”. Only then does the Mac register a new, independent Relay device with the existing Hub registration API and submit activation through the idempotent saga; Relay atomically persists its own committed state before starting. Cancelled or unconfirmed setup creates no Hub device and leaves delivery disabled.
-5. Mobile notifications use the rules for the currently configured Hub origin. The card says “手机使用与这台 Mac 相同的提醒规则” and separately reports the local revision, last successfully synchronized revision/time/time zone, or “同步失败，手机仍使用上次规则”. Sync runs after local rule changes, app/relay reconnection and system-time-zone changes. A 409 conflict offers “重新载入手机规则” and “用这台 Mac 的规则覆盖”; neither happens silently.
+5. Mobile notifications use the rules for the currently configured Hub origin. The card says “手机使用与这台 Mac 相同的提醒规则” and separately reports the local revision, last successfully synchronized revision/time/time zone, or “同步失败，手机仍使用上次规则”. Sync runs after local rule changes, app/relay reconnection and system-time-zone changes. Because the authenticated status API deliberately does not return session/keyword policy, a 409 conflict offers “用这台 Mac 的规则覆盖” or “稍后处理”; neither overwrites silently or pretends to reload unavailable rules.
 6. Quiet mode uses the existing labels. “只静音” requests ntfy priority 2; Android settings ultimately control sound, so the UI calls it a low-priority request until OPPO acceptance confirms its observed behavior. “关闭全部提醒” records the event as intentionally handled without posting.
-7. Pausing phone notifications keeps the one SSE active. Each arriving event is durably handled as “手机通知已停用” and ACKed without an ntfy request, so paused events never burst after resume. The switch says “停用期间的提醒不会补发”. Removing the phone idempotently stops the Relay stream, clears destination/device credential and revokes its management bearer, then Mac uses a fresh user JWT to disable the Hub device. Hub DELETE 404 is treated as already removed. Failure shows “移除未完成” with “重试移除” and may require fresh Relay pairing. Rotating makes the Relay stop future posts to the old topic; it cannot revoke existing subscriptions or delete public-provider cache.
+7. Pausing phone notifications keeps the one SSE active. Each arriving event is durably handled as “手机通知已停用” and ACKed without an ntfy request, so paused events never burst after resume. The switch says “停用期间的提醒不会补发”. Removing the phone idempotently stops the Relay stream and clears destination/device credential, then Mac uses a fresh user JWT to disable the Hub device. Hub DELETE 404 is treated as already removed. The Relay management pairing remains, returning the card to “添加手机”; a separate explicit “断开 Relay” action or VM CLI revokes the management bearer. Failure shows “移除未完成” with “重试移除”. Rotating makes the Relay stop future posts to the old topic; it cannot revoke existing subscriptions or delete public-provider cache.
 
 The settings UI reports independent facts instead of one “healthy” badge: phone delivery enabled/disabled, Relay reachable/unreachable, rules synchronized/pending/failed, latest ntfy acceptance time, Hub stream/last ACK, and cleanup required. It always says “ntfy 已接收不代表手机已显示”. It never displays a raw device token or topic in ordinary status text.
 
@@ -73,7 +73,7 @@ HAPI completion
 
 ### Provisioning and authentication
 
-- The relay exposes a narrow HTTPS management API: public minimal `GET /health`; `POST /v1/pair`; and authenticated `GET /v1/status`, `PUT /v1/config`, `POST /v1/test`, `POST /v1/activate`, `POST /v1/pause`, `DELETE /v1/receiver`.
+- The relay exposes a narrow HTTPS management API: public minimal `GET /health`; `POST /v1/pair`; and authenticated `GET /v1/status`, `PUT /v1/config`, `POST /v1/test`, `POST /v1/activate`, `POST /v1/pause`, `DELETE /v1/receiver`, `POST /v1/unpair`.
 - `POST /v1/pair` consumes a VM-locally generated ≥128-bit random one-time code with a 10-minute TTL, single-use atomic consumption and per-source/global failure limits. It returns a new random management bearer once. Relay stores only its hash; Mac stores it in Keychain. CLI/logs may print the one-time code once but never any long-term credential. `GET /v1/status` can query a known activation without returning secrets.
 - Activation is an idempotent saga across Hub and Relay. Mac first persists a stable random `activationId`, stable Relay `installationId` and operation state. It registers that installation once through the existing `/api/auth` and Hub route, then retains the first returned device ID/token in Keychain until Relay confirms commitment; it must not blindly re-register because the current Hub route rotates the token on an installation-ID conflict.
 - `POST /v1/activate` carries `activationId`, Hub device ID/token and the full configuration revision. Relay atomically persists all fields before starting SSE. Repeating the same activation returns the committed result without changing credential/config; a different activation against an already bound Relay returns 409.
@@ -148,7 +148,7 @@ The Mac pushes the full normalized snapshot after setup and on each settings cha
 
 - A8: the relay has one SSE, no polling, strict sequence processing, ACK after durable suppression or accepted ntfy post only, ledger-hit ACK without repost, replay after restart and bounded retry for transient failures. Paused delivery keeps consuming, records suppression and ACKs with zero provider posts; resuming never replays paused events.
 - A9: fault injection covers valid/invalid 2xx, 2xx-before-ledger, ledger-before-ACK, Hub 401/403, ntfy 4xx, timeout, 429 with `Retry-After`, 5xx, offline restart and configuration rotation; evidence proves at-least-once behavior and no later-sequence skip.
-- A10: a shared fixture corpus proves Swift/Relay parity for session selection, keyword matching, duration equality/unknown, permission events and all quiet-hour shapes/time zones, including offline rule edits, revision conflict and time-zone resync.
+- A10: a shared fixture corpus proves Swift/Relay parity for session selection, keyword matching, duration equality/unknown, permission events and all quiet-hour shapes/time zones, including offline rule edits, explicit revision-conflict override/defer and time-zone resync.
 - A11: a real VM candidate continues delivering while the controlling Mac is closed/asleep.
 
 ### End-to-end and release

@@ -1,6 +1,6 @@
 ---
 title: V0.4 Android exact-session notifications
-status: implementing
+status: deployment-candidate
 owner: engineering
 version: V0.4
 specs:
@@ -23,4 +23,10 @@ Progress:
 - Second architecture review found cross-service activation could not be atomic; it is now an idempotent saga with stable IDs, unknown-outcome recovery and compensating Hub deletion.
 - Final product and architecture reviews report no blockers; test/operations review reports no blockers and retained implementation-time P1 gates for API schemas, state layout, shutdown behavior and Linux packaging.
 
-Next: implement Relay core/operations and Mac control surface, then run independent implementation review and full acceptance gates.
+- 2026-09-11: Relay core, strict API, durable state/ledger, packaging, systemd installation and runbook implemented. Relay typecheck, unit tests, fake-provider smoke and self-contained Linux x64 package smoke pass.
+- 2026-09-11: Mac Relay pairing, phone onboarding, QR/copy fallback, real-session test, activation/pause/remove/repair/resume, shared rule sync and status UI implemented. The full macOS test suite passes.
+- 2026-09-11: Final implementation review found one activation-cleanup blocker plus contract/operations hardening items. Remediation and regression tests followed before declaring a deployable candidate.
+
+- 2026-09-11: all implementation-review P0/P1 findings closed. Final independent review reports P0=0/P1=0. Root verification passes 67 Mac tests, universal/ad-hoc Release packaging, 84 Relay tests, fake-provider smoke, Linux x64 self-contained bundle smoke, unchanged Hub patch hash and diff checks.
+
+Next: commit and push the reviewed candidate, rebuild artifacts from that immutable SHA, then request approval for the production VM/TLS deployment gate.
