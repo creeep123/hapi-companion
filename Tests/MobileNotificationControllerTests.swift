@@ -165,6 +165,8 @@ final class MobileNotificationControllerTests: XCTestCase {
         XCTAssertEqual(config.policy.selectedSessionIds, ["session-1"])
         XCTAssertEqual(config.policy.timeZone, TimeZone.current.identifier)
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(stub.read { $0.saved?.topic }).count, 37)
+        XCTAssertEqual(controller.topicName, stub.read { $0.saved?.topic })
+        XCTAssertEqual(controller.subscriptionAddress, "ntfy://ntfy.sh/\(try XCTUnwrap(controller.topicName))")
 
         await controller.testPhone(sessionId: "real-session")
         XCTAssertEqual(stub.read { $0.testedSession }, "real-session")

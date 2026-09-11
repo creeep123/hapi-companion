@@ -70,6 +70,7 @@ final class MobileNotificationController {
         guard let topic = storedSecrets?.topic else { return nil }
         return "ntfy://ntfy.sh/\(topic)"
     }
+    var topicName: String? { storedSecrets?.topic }
     var topicForQRCode: String? { subscriptionAddress }
     var enabled: Bool { stage == .active }
     var needsHubRepair: Bool { attentionCode == .hubUnauthorized }
@@ -403,11 +404,11 @@ final class MobileNotificationController {
         }
     }
 
-    func copySubscriptionAddress() {
-        guard let subscriptionAddress else { return }
+    func copyTopicName() {
+        guard let topicName else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(subscriptionAddress, forType: .string)
-        message = "订阅地址已复制；请勿分享"
+        NSPasteboard.general.setString(topicName, forType: .string)
+        message = "主题名称已复制；在 ntfy 的“主题名称”框中粘贴即可，请勿分享"
     }
 
     func timeZoneChanged() async {

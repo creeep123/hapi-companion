@@ -274,8 +274,8 @@ struct CompanionSettingsView: View {
                     Image(nsImage: image).interpolation(.none).resizable().frame(width: 150, height: 150)
                         .accessibilityLabel("ntfy 订阅二维码")
                 }
-                Button("复制订阅地址") { mobile.copySubscriptionAddress() }
-                Text("订阅地址相当于接收凭据，请勿分享。扫码无效时，可在 ntfy 中粘贴订阅地址。")
+                Button("复制主题名称") { mobile.copyTopicName() }
+                Text("手动添加时，不勾选“使用其他服务器”，把复制内容粘贴到 ntfy 的“主题名称”框。主题名称相当于接收凭据，请勿分享。")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("测试打开的会话", selection: testSessionBinding) {
                     ForEach(model.catalog) { session in Text(session.title).tag(session.id) }
