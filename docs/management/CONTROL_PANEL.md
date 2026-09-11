@@ -1,9 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.3.1 is publicly released and installed on this Mac. Free new-version reminders and in-app installation passed real download/relaunch, signed-feed/archive checks, Hub reconnection and retained settings; 47 tests pass. [Release evidence and rollback](../deployments/V0_3_1_MAC_UPDATES.md). No Hub/updater deployment.
+
+## Active design — V0.4 Android exact-session notifications
+
+The user approved design and implementation of a lightweight Android channel after an OPPO Find X9 Pro on ColorOS 16.0.10 received an ntfy notification and opened the exact HAPI PWA session with one tap. The accepted design adds a small VM Mobile Relay so phone delivery continues while the Mac sleeps, preserves one durable SSE plus explicit ACK with no polling, reuses existing reminder rules, and sends no session title or agent-response body. Independent product, architecture/security and test/operations reviews now report no blockers; implementation is starting with their remaining P1 gates in scope. The architecture reuses existing Hub APIs, so no HAPI patch or updater pin change is planned. Production VM changes and final phone acceptance remain human gates. Scope: [V0.4 specification](../specs/V0_4_ANDROID_NOTIFICATIONS.md). Architecture: [ADR 0005](../adr/0005-mobile-notification-relay.md).
 
 ## Active feature — selectable notification sounds
 
