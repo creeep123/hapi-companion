@@ -1,6 +1,6 @@
 ---
 title: V0.4 Android exact-session notifications
-status: deployment-candidate
+status: production-acceptance
 owner: engineering
 version: V0.4
 specs:
@@ -12,7 +12,7 @@ Objective: ship reliable Android completion notifications that open the exact HA
 
 Acceptance: V0.4 A1–A15, independent product/design/engineering/security review with no unresolved blockers, implementation review, local and clean-HAPI validation, then human production/phone gates only when required.
 
-Constraints: public ntfy.sh first; no response body; one relay SSE and explicit ACK; no polling; do not add updater implementation; every patch change requires SHA/pin handoff and upgrade acceptance.
+Constraints: public ntfy.sh first; fixed content by default and event title/summary only after separate opt-in; one relay SSE and explicit ACK; no polling; do not add updater implementation; every patch change requires SHA/pin handoff and upgrade acceptance.
 
 Progress:
 
@@ -29,4 +29,6 @@ Progress:
 
 - 2026-09-11: all implementation-review P0/P1 findings closed. Final independent review reports P0=0/P1=0. Root verification passes 67 Mac tests, universal/ad-hoc Release packaging, 84 Relay tests, fake-provider smoke, Linux x64 self-contained bundle smoke, unchanged Hub patch hash and diff checks.
 
-Next: commit and push the reviewed candidate, rebuild artifacts from that immutable SHA, then request approval for the production VM/TLS deployment gate.
+- 2026-09-12: production v0.4.0 Relay is healthy and the OPPO receives notifications whose tap opens the exact HAPI PWA session. The user requested matching Mac notification content. V0.4.1 adds a capability-gated, per-Hub, explicit opt-in for sanitized event title/summary while preserving fixed text as the safe default. Conflict recovery retains both enable and privacy-off intent across restarts. Independent final review and immutable production upgrade evidence remain pending.
+
+Next: close final review, commit and push v0.4.1, rebuild immutable artifacts, upgrade Relay and Mac, then verify one real matching-content phone notification.

@@ -44,8 +44,18 @@ enum MobileRelayAttentionCode: String, Decodable, Equatable, Sendable {
 
 enum MobileRelayActivationStatus: String, Decodable, Equatable, Sendable { case committed, rejected }
 enum MobileRelayStreamStatus: String, Decodable, Equatable, Sendable { case stopped, connecting, connected, attention }
+enum MobileNotificationContentMode: String, Codable, Equatable, Sendable { case fixed, eventPreview }
 
 struct MobileRelayStatus: Decodable, Equatable, Sendable {
+    struct Capabilities: Decodable, Equatable, Sendable {
+        var notificationContentModes: [MobileNotificationContentMode] = []
+        private enum CodingKeys: String, CodingKey { case notificationContentModes }
+        init(notificationContentModes: [MobileNotificationContentMode] = []) { self.notificationContentModes = notificationContentModes }
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            notificationContentModes = try values.decodeIfPresent([MobileNotificationContentMode].self, forKey: .notificationContentModes) ?? []
+        }
+    }
     struct Activation: Decodable, Equatable, Sendable { let status: MobileRelayActivationStatus; let activationId: String }
     struct Health: Decodable, Equatable, Sendable {
         let stream: MobileRelayStreamStatus
@@ -58,6 +68,23 @@ struct MobileRelayStatus: Decodable, Equatable, Sendable {
     var paused: Bool
     var activation: Activation?
     var health: Health
+    var capabilities: Capabilities = .init()
+
+    private enum CodingKeys: String, CodingKey { case revision, enabled, paused, activation, health, capabilities }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        revision = try values.decode(Int.self, forKey: .revision)
+        enabled = try values.decode(Bool.self, forKey: .enabled)
+        paused = try values.decode(Bool.self, forKey: .paused)
+        activation = try values.decodeIfPresent(Activation.self, forKey: .activation)
+        health = try values.decode(Health.self, forKey: .health)
+        capabilities = try values.decodeIfPresent(Capabilities.self, forKey: .capabilities) ?? .init()
+    }
+
+    init(revision: Int, enabled: Bool, paused: Bool, activation: Activation?, health: Health, capabilities: Capabilities = .init()) {
+        self.revision = revision; self.enabled = enabled; self.paused = paused
+        self.activation = activation; self.health = health; self.capabilities = capabilities
+    }
 
     var lastNtfyAcceptedAt: Date? { health.latestNtfyAcceptanceAt.map { Date(timeIntervalSince1970: $0 / 1000) } }
     var streamConnected: Bool { health.stream == .connected }
@@ -100,6 +127,7 @@ struct MobileRelayConfiguration: Codable, Sendable {
     let hapiOrigin: String
     let revision: Int
     let policy: MobileRelayPolicy
+    var contentMode: MobileNotificationContentMode = .fixed
 }
 
 struct MobileRelayActivation: Codable, Sendable {

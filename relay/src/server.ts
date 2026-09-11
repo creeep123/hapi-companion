@@ -20,7 +20,7 @@ export function createHandler(manager: RelayManager): (request: Request) => Prom
       if (!await manager.authorized(bearer)) return json({ error: 'unauthorized' }, 401)
       if (request.method === 'GET' && url.pathname === '/v1/status') {
         const s = await manager.store.load(); const requested = url.searchParams.get('activationId')
-        return json({ revision: s.config?.revision ?? 0, enabled: s.enabled, paused: s.paused, activation: requested && s.activation?.activationId === requested ? { status: s.activation.status, activationId: requested } : null, health: s.health })
+        return json({ revision: s.config?.revision ?? 0, enabled: s.enabled, paused: s.paused, capabilities: { notificationContentModes: ['fixed', 'eventPreview'] }, activation: requested && s.activation?.activationId === requested ? { status: s.activation.status, activationId: requested } : null, health: s.health })
       }
       if (request.method === 'PUT' && url.pathname === '/v1/config') { const b = await objectBody(request); if (!Number.isSafeInteger(b.expectedRevision)) throw new Error('invalid_config_request'); const config = await manager.configure(b.config, b.expectedRevision as number); return json({ revision: config.revision }) }
       if (request.method === 'POST' && url.pathname === '/v1/test') { const b = await objectBody(request); if (typeof b.sessionId !== 'string') throw new Error('invalid_test_request'); await manager.test(b.sessionId); return json({ accepted: true }) }

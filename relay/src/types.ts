@@ -7,7 +7,7 @@ export type ReminderPolicy = {
 }
 export type RelayConfig = {
   receiverId: string; ntfyBaseUrl: string; topic: string; hapiOrigin: string
-  policy: ReminderPolicy; revision: number
+  policy: ReminderPolicy; revision: number; contentMode: 'fixed' | 'eventPreview'
 }
 export type HubCredential = { deviceId: string; token: string }
 export type Activation = {

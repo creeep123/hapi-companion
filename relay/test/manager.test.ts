@@ -4,7 +4,7 @@ import { StateStore } from '../src/state'
 import { config, statePath } from './helpers'
 
 class Engine { starts = 0; stops = 0; async start() { this.starts++ } async stop() { this.stops++ } async restart() { await this.stop(); await this.start() } }
-class Ntfy { posts = 0; clicks: string[] = []; async post(_config: unknown, _event: unknown, click: string) { this.posts++; this.clicks.push(click) } }
+class Ntfy { posts = 0; clicks: string[] = []; configs: any[] = []; async post(config: unknown, _event: unknown, click: string) { this.posts++; this.configs.push(config); this.clicks.push(click) } }
 const activation = { activationId: '11111111-1111-4111-8111-111111111111', installationId: '22222222-2222-4222-8222-222222222222', deviceId: '33333333-3333-4333-8333-333333333333', token: 'x'.repeat(40), revision: 1 }
 async function setup() { const store = new StateStore(await statePath()), engine = new Engine(), ntfy = new Ntfy(); return { store, engine, ntfy, manager: new RelayManager(store, engine as any, ntfy as any) } }
 
@@ -24,6 +24,8 @@ describe('RelayManager', () => {
     await expect(manager.configure(config({ revision: 2 }), 0)).rejects.toMatchObject({ revision: 1 })
     await expect(manager.configure(config({ revision: 3 }), 1)).rejects.toMatchObject({ revision: 1 })
     await expect(manager.configure(config({ revision: 2, receiverId: 'other' }), 1)).rejects.toMatchObject({ revision: 1 })
+    await expect(manager.configure({ ...config({ revision: 2 }), contentMode: 'unknown' }, 1)).rejects.toThrow('invalid content mode')
+    await expect(manager.configure({ ...config({ revision: 2 }), contentMode: false }, 1)).rejects.toThrow('invalid content mode')
   })
   test('activation is committed before engine start and same id is idempotent', async () => {
     const { manager, store, engine } = await setup(); await manager.configure(config(), 0)
@@ -45,6 +47,7 @@ describe('RelayManager', () => {
     const { manager, ntfy } = await setup(); await manager.configure(config(), 0); await manager.test('real-session')
     expect(ntfy.posts).toBe(1)
     expect(ntfy.clicks).toEqual(['https://hapi.example/sessions/real-session'])
+    expect(ntfy.configs[0].contentMode).toBe('fixed')
   })
   test('explicit repair rotates an invalid committed Hub credential', async () => {
     const { manager, store } = await setup(); await manager.configure(config(), 0)

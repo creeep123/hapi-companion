@@ -49,6 +49,11 @@ final class MobileNotificationController {
     var conflictDeferred = false
     var testAccepted = false
     var keychainUnavailable = false
+    var contentMode: MobileNotificationContentMode = .fixed
+    private(set) var pendingContentMode: MobileNotificationContentMode?
+    var supportsEventPreview = false
+    var contentModeState = "使用固定隐私文案"
+    private(set) var eventPreviewConsentGranted = false
 
     init(
         defaults: UserDefaults = .standard,
@@ -122,6 +127,9 @@ final class MobileNotificationController {
         }
         localPolicyRevision = defaults.integer(forKey: key("policyRevision", scope))
         knownRelayRevision = defaults.object(forKey: key("relayRevision", scope)) == nil ? nil : defaults.integer(forKey: key("relayRevision", scope))
+        contentMode = MobileNotificationContentMode(rawValue: defaults.string(forKey: key("contentMode", scope)) ?? "") ?? .fixed
+        pendingContentMode = defaults.string(forKey: key("pendingContentMode", scope)).flatMap(MobileNotificationContentMode.init(rawValue:))
+        contentModeState = contentMode == .eventPreview ? "已开启，仅影响后续通知" : "使用固定隐私文案"
         let savedStage = defaults.string(forKey: key("stage", scope))
         if storedSecrets == nil { stage = .relayNotPaired }
         else if storedSecrets?.topic == nil { stage = .readyToAdd }
@@ -249,8 +257,10 @@ final class MobileNotificationController {
         rulesState = "正在同步"
         do {
             let status = try await api.status(endpoint, value.managementToken, nil)
+            apply(status)
             let expected = force ? (conflictRevision ?? status.revision) : (knownRelayRevision ?? status.revision)
-            _ = try await pushConfiguration(endpoint: endpoint, secrets: value, expectedRevision: expected)
+            _ = try await pushConfiguration(endpoint: endpoint, secrets: value, expectedRevision: expected, contentMode: pendingContentMode ?? contentMode)
+            finalizePendingContentMode()
             conflictRevision = nil
             conflictDeferred = false
         } catch MobileRelayError.conflict(let revision) {
@@ -268,6 +278,46 @@ final class MobileNotificationController {
         conflictDeferred = true
         rulesState = "同步冲突，手机暂时继续使用上次规则"
     }
+
+    func setContentMode(_ requested: MobileNotificationContentMode) async {
+        guard !busy, hasPhone, let endpoint = validatedEndpoint(), let value = storedSecrets else { return }
+        if requested == .eventPreview && !supportsEventPreview {
+            contentModeState = "Relay 版本不支持，请先升级 Relay"
+            return
+        }
+        if requested == .eventPreview && !eventPreviewConsentGranted {
+            contentModeState = "请先确认公共 ntfy 隐私说明"
+            return
+        }
+        guard requested != contentMode else { return }
+        pendingContentMode = requested
+        persistPendingContentMode()
+        busy = true
+        defer { busy = false }
+        contentModeState = "正在同步"
+        do {
+            let status = try await api.status(endpoint, value.managementToken, nil)
+            guard requested == .fixed || status.capabilities.notificationContentModes.contains(.eventPreview) else {
+                supportsEventPreview = false
+                contentModeState = "Relay 版本不支持，请先升级 Relay"
+                return
+            }
+            _ = try await pushConfiguration(endpoint: endpoint, secrets: value, expectedRevision: knownRelayRevision ?? status.revision, contentMode: requested)
+            contentMode = requested
+            persistContentMode()
+            clearPendingContentMode()
+            contentModeState = requested == .eventPreview ? "已开启，仅影响后续通知" : "已关闭，仅影响后续通知；既有通知不会被删除"
+        } catch MobileRelayError.conflict(let revision) {
+            conflictRevision = revision
+            conflictDeferred = false
+            contentModeState = contentMode == .fixed ? "同步冲突，手机仍使用固定隐私文案" : "同步冲突，手机仍显示标题和摘要"
+        } catch {
+            contentModeState = contentMode == .fixed ? "同步失败，手机仍使用固定隐私文案" : "同步失败，手机仍显示标题和摘要"
+            message = error.localizedDescription
+        }
+    }
+
+    func grantEventPreviewConsent() { eventPreviewConsentGranted = true }
 
     func refreshStatus() async {
         guard let endpoint = validatedEndpoint(), let value = storedSecrets else { return }
@@ -416,7 +466,7 @@ final class MobileNotificationController {
         await sync(preferences: currentPreferences)
     }
 
-    private func pushConfiguration(endpoint: URL, secrets: MobileRelaySecrets, expectedRevision: Int) async throws -> Int {
+    private func pushConfiguration(endpoint: URL, secrets: MobileRelaySecrets, expectedRevision: Int, contentMode: MobileNotificationContentMode? = nil) async throws -> Int {
         guard let hubURL, let topic = secrets.topic else { throw MobileRelayError.invalidResponse }
         if localPolicyRevision == 0 { localPolicyRevision = 1; persistPolicyRevision() }
         let config = MobileRelayConfiguration(
@@ -425,7 +475,8 @@ final class MobileNotificationController {
             topic: topic,
             hapiOrigin: Self.origin(hubURL),
             revision: expectedRevision + 1,
-            policy: MobileRelayPolicy(currentPreferences)
+            policy: MobileRelayPolicy(currentPreferences),
+            contentMode: contentMode ?? self.contentMode
         )
         let revision = try await api.configure(endpoint, secrets.managementToken, config, expectedRevision)
         knownRelayRevision = revision
@@ -444,6 +495,15 @@ final class MobileNotificationController {
         streamConnected = status.streamConnected
         lastAckSequence = status.lastAckSequence
         attentionCode = status.health.attentionCode
+        supportsEventPreview = status.capabilities.notificationContentModes.contains(.eventPreview)
+        if !supportsEventPreview && (contentMode == .eventPreview || pendingContentMode == .eventPreview) {
+            if contentMode == .eventPreview {
+                contentMode = .fixed
+                persistContentMode()
+            }
+            if pendingContentMode == .eventPreview { clearPendingContentMode() }
+            contentModeState = "Relay 未声明支持标题和摘要，当前按固定隐私文案处理；请先升级 Relay"
+        }
     }
 
     private func perform(_ operation: () async throws -> Void) async {
@@ -512,6 +572,30 @@ final class MobileNotificationController {
     private func persistRelayRevision(_ revision: Int) {
         guard let hubURL else { return }
         defaults.set(revision, forKey: key("relayRevision", storageScope(hubURL)))
+    }
+
+    private func persistContentMode() {
+        guard let hubURL else { return }
+        defaults.set(contentMode.rawValue, forKey: key("contentMode", storageScope(hubURL)))
+    }
+
+    private func persistPendingContentMode() {
+        guard let hubURL, let pendingContentMode else { return }
+        defaults.set(pendingContentMode.rawValue, forKey: key("pendingContentMode", storageScope(hubURL)))
+    }
+
+    private func clearPendingContentMode() {
+        pendingContentMode = nil
+        guard let hubURL else { return }
+        defaults.removeObject(forKey: key("pendingContentMode", storageScope(hubURL)))
+    }
+
+    private func finalizePendingContentMode() {
+        guard let pendingContentMode else { return }
+        contentMode = pendingContentMode
+        persistContentMode()
+        clearPendingContentMode()
+        contentModeState = contentMode == .eventPreview ? "已开启，仅影响后续通知" : "已关闭，仅影响后续通知；既有通知不会被删除"
     }
 
     private func saveStage(_ value: String) {

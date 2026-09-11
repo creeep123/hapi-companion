@@ -146,23 +146,24 @@ describe('RelayEngine delivery gate', () => {
   test('configuration rotation aborts an in-flight post and retries the event with the new destination', async () => {
     const store = await activeStore(), item = { seq: 1, event: event({ eventId: crypto.randomUUID() }) }, topics: string[] = []; let acked = false
     const hub = { events: async function* (signal: AbortSignal) { yield item; await waitForAbort(signal) }, ack: async () => { acked = true } }
-    const ntfy = { post: async (c: any, _e: any, _u: any, _q: any, signal: AbortSignal) => { topics.push(c.topic); if (topics.length === 1) await waitForAbort(signal) } }
+    const modes: string[] = []
+    const ntfy = { post: async (c: any, _e: any, _u: any, _q: any, signal: AbortSignal) => { topics.push(c.topic); modes.push(c.contentMode); if (topics.length === 1) await waitForAbort(signal) } }
     const engine = new RelayEngine(store, ntfy as any, () => hub as any), manager = new RelayManager(store, engine, ntfy as any)
     await engine.start(); for (let i = 0; i < 50 && topics.length < 1; i++) await Bun.sleep(1)
-    await manager.configure(config({ revision: 2, topic: 'zyxwvutsrqponmlkjihgfe' }), 1)
+    await manager.configure(config({ revision: 2, topic: 'zyxwvutsrqponmlkjihgfe', contentMode: 'eventPreview' }), 1)
     for (let i = 0; i < 50 && !acked; i++) await Bun.sleep(1); await engine.stop()
-    expect(topics).toEqual(['abcdefghijklmnopqrstuv', 'zyxwvutsrqponmlkjihgfe']); expect(acked).toBeTrue(); expect((await store.load()).handled[item.event.eventId]?.reason).toBe('posted')
+    expect(topics).toEqual(['abcdefghijklmnopqrstuv', 'zyxwvutsrqponmlkjihgfe']); expect(modes).toEqual(['fixed', 'eventPreview']); expect(acked).toBeTrue(); expect((await store.load()).handled[item.event.eventId]?.reason).toBe('posted')
   })
   test('rotation requested during ledger write serializes, then ACK replay does not repost accepted event', async () => {
     const store = await activeStore(), item = { seq: 1, event: event({ eventId: crypto.randomUUID() }) }, originalUpdate = store.update.bind(store)
     let ledgerEntered!: () => void, releaseLedger!: () => void; const entered = new Promise<void>(r => { ledgerEntered = r }), release = new Promise<void>(r => { releaseLedger = r }); let gate = true
     store.update = ((mutate: any) => originalUpdate(async (state: any) => { const before = Object.keys(state.handled).length, result = await mutate(state); if (gate && Object.keys(state.handled).length > before) { gate = false; ledgerEntered(); await release } return result })) as any
-    let posts = 0, ackAttempts = 0, acked = false
+    let posts = 0, ackAttempts = 0, acked = false, acceptedMode = ''
     const hub = { events: async function* (signal: AbortSignal) { yield item; await waitForAbort(signal) }, ack: async (_s: number, _e: string, signal: AbortSignal) => { ackAttempts++; if (ackAttempts === 1) await waitForAbort(signal); acked = true } }
-    const ntfy = { post: async () => { posts++ } }, engine = new RelayEngine(store, ntfy as any, () => hub as any), manager = new RelayManager(store, engine, ntfy as any)
+    const ntfy = { post: async (c: any) => { posts++; acceptedMode = c.contentMode } }, engine = new RelayEngine(store, ntfy as any, () => hub as any), manager = new RelayManager(store, engine, ntfy as any)
     await engine.start(); await entered
-    const rotation = manager.configure(config({ revision: 2, topic: 'zyxwvutsrqponmlkjihgfe' }), 1); await Bun.sleep(1); releaseLedger(); await rotation
+    const rotation = manager.configure(config({ revision: 2, topic: 'zyxwvutsrqponmlkjihgfe', contentMode: 'eventPreview' }), 1); await Bun.sleep(1); releaseLedger(); await rotation
     for (let i = 0; i < 50 && !acked; i++) await Bun.sleep(1); await engine.stop()
-    expect(posts).toBe(1); expect(ackAttempts).toBe(2); expect(acked).toBeTrue(); expect((await store.load()).config?.revision).toBe(2)
+    expect(posts).toBe(1); expect(acceptedMode).toBe('fixed'); expect(ackAttempts).toBe(2); expect(acked).toBeTrue(); expect((await store.load()).config?.contentMode).toBe('eventPreview')
   })
 })

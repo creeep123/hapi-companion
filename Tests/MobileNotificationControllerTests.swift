@@ -18,6 +18,8 @@ private final class MobileControllerStub: @unchecked Sendable {
     var healthCode: MobileRelayAttentionCode?
     var failSecretSave = false
     var repaired = false
+    var contentModes: [MobileNotificationContentMode] = []
+    var configureFailure = false
 
     func read<T>(_ body: (MobileControllerStub) -> T) -> T { lock.withLock { body(self) } }
     func write(_ body: (MobileControllerStub) -> Void) { lock.withLock { body(self) } }
@@ -40,10 +42,12 @@ private final class MobileControllerStub: @unchecked Sendable {
                 MobileRelayStatus(
                     revision: state.revision, enabled: state.activation != nil && (state.pauses.last != true), paused: state.pauses.last == true,
                     activation: requested.flatMap { id in state.activation?.activationId == id ? .init(status: .committed, activationId: id) : nil },
-                    health: .init(stream: state.healthCode == nil ? (state.activation == nil ? .stopped : .connected) : .attention, lastAckSeq: 7, latestNtfyAcceptanceAt: 1_788_768_000_000, attentionCode: state.healthCode)
+                    health: .init(stream: state.healthCode == nil ? (state.activation == nil ? .stopped : .connected) : .attention, lastAckSeq: 7, latestNtfyAcceptanceAt: 1_788_768_000_000, attentionCode: state.healthCode),
+                    capabilities: .init(notificationContentModes: state.contentModes)
                 )
             } },
             configure: { [self] _, _, config, expected in
+                if read({ $0.configureFailure }) { throw URLError(.cannotConnectToHost) }
                 if let conflict = read({ $0.forceConflictRevision }) {
                     write { $0.revision = conflict }
                     throw MobileRelayError.conflict(conflict)
@@ -324,6 +328,120 @@ final class MobileNotificationControllerTests: XCTestCase {
         XCTAssertNil(controller.conflictRevision)
         XCTAssertFalse(controller.conflictDeferred)
         XCTAssertEqual(stub.read { $0.configuration?.revision }, 5)
+    }
+
+    func testEventPreviewRequiresCapabilityConsentSuccessfulSyncAndPersistsByOrigin() async throws {
+        let suite = "MobileNotificationControllerTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let stub = MobileControllerStub()
+        stub.saved = MobileRelaySecrets(managementToken: "management", topic: "hapi-0123456789abcdef0123456789abcdef", pendingActivation: nil)
+        let makeController = {
+            MobileNotificationController(defaults: defaults, secrets: stub.secretAccess, api: stub.api, registerDevice: { _, _ in throw MobileRelayError.invalidResponse }, deleteDevice: { _ in })
+        }
+        var controller = makeController()
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        controller.endpointText = "https://relay.example"
+        XCTAssertEqual(controller.contentMode, .fixed, "Existing installs and missing preference must default to fixed")
+        await controller.refreshStatus()
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertTrue(controller.contentModeState.contains("升级 Relay"))
+        XCTAssertNil(stub.read { $0.configuration }, "Missing capability must not claim or send preview configuration")
+
+        stub.write { $0.contentModes = [.fixed, .eventPreview] }
+        await controller.refreshStatus()
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertTrue(controller.contentModeState.contains("隐私说明"))
+        controller.grantEventPreviewConsent()
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.contentMode, .eventPreview)
+        XCTAssertEqual(stub.read { $0.configuration?.contentMode }, .eventPreview)
+
+        controller = makeController()
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        XCTAssertEqual(controller.contentMode, .eventPreview)
+        XCTAssertTrue(controller.contentModeState.contains("已开启"))
+        controller.endpointText = "https://relay.example"
+        await controller.refreshStatus()
+        stub.write { $0.forceConflictRevision = 7 }
+        await controller.setContentMode(.fixed)
+        XCTAssertEqual(controller.contentMode, .eventPreview)
+        XCTAssertEqual(controller.pendingContentMode, .fixed)
+        controller = makeController()
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        controller.endpointText = "https://relay.example"
+        XCTAssertEqual(controller.pendingContentMode, .fixed, "Closing intent must survive relaunch to avoid continued content exposure")
+        stub.write { $0.forceConflictRevision = nil }
+        await controller.sync(preferences: ReminderPreferences(), force: true)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertNil(controller.pendingContentMode)
+        XCTAssertEqual(stub.read { $0.configuration?.contentMode }, .fixed)
+        controller.configure(hubURL: URL(string: "https://other-hapi.example")!, preferences: ReminderPreferences())
+        XCTAssertEqual(controller.contentMode, .fixed, "Content choice must be scoped by Hub origin")
+    }
+
+    func testEventPreviewFailureAndConflictKeepConfirmedServerMode() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let stub = MobileControllerStub()
+        stub.saved = MobileRelaySecrets(managementToken: "management", topic: "hapi-0123456789abcdef0123456789abcdef", pendingActivation: nil)
+        stub.contentModes = [.fixed, .eventPreview]
+        let controller = MobileNotificationController(defaults: defaults, secrets: stub.secretAccess, api: stub.api, registerDevice: { _, _ in throw MobileRelayError.invalidResponse }, deleteDevice: { _ in })
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        controller.endpointText = "https://relay.example"
+        await controller.refreshStatus()
+        controller.grantEventPreviewConsent()
+        stub.write { $0.configureFailure = true }
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertTrue(controller.contentModeState.contains("仍使用固定"))
+        stub.write { $0.configureFailure = false; $0.forceConflictRevision = 9 }
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertEqual(controller.conflictRevision, 9)
+        XCTAssertEqual(controller.pendingContentMode, .eventPreview)
+        XCTAssertTrue(controller.contentModeState.contains("仍使用固定"))
+        stub.write { $0.forceConflictRevision = nil }
+        await controller.sync(preferences: ReminderPreferences(), force: true)
+        XCTAssertEqual(controller.contentMode, .eventPreview)
+        XCTAssertNil(controller.pendingContentMode)
+        XCTAssertEqual(stub.read { $0.configuration?.contentMode }, .eventPreview)
+    }
+
+    func testRelaunchPendingPreviewCannotBypassMissingCapabilityDuringForceSync() async throws {
+        let suite = "MobileNotificationControllerTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let stub = MobileControllerStub()
+        stub.saved = MobileRelaySecrets(managementToken: "management", topic: "hapi-0123456789abcdef0123456789abcdef", pendingActivation: nil)
+        stub.contentModes = [.fixed, .eventPreview]
+        stub.forceConflictRevision = 6
+        let makeController = {
+            MobileNotificationController(defaults: defaults, secrets: stub.secretAccess, api: stub.api, registerDevice: { _, _ in throw MobileRelayError.invalidResponse }, deleteDevice: { _ in })
+        }
+        var controller = makeController()
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        controller.endpointText = "https://relay.example"
+        await controller.refreshStatus()
+        controller.grantEventPreviewConsent()
+        await controller.setContentMode(.eventPreview)
+        XCTAssertEqual(controller.pendingContentMode, .eventPreview)
+
+        stub.write { state in
+            state.contentModes = []
+            state.forceConflictRevision = nil
+            state.configuration = nil
+        }
+        controller = makeController()
+        controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences())
+        controller.endpointText = "https://relay.example"
+        XCTAssertEqual(controller.pendingContentMode, .eventPreview)
+        await controller.sync(preferences: ReminderPreferences(), force: true)
+        XCTAssertEqual(controller.contentMode, .fixed)
+        XCTAssertNil(controller.pendingContentMode)
+        XCTAssertEqual(stub.read { $0.configuration?.contentMode }, .fixed)
+        XCTAssertTrue(controller.contentModeState.contains("升级 Relay"))
     }
 
     func testAttentionCodesExposeOnlyTheCorrectRecoveryAction() async throws {

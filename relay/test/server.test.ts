@@ -16,6 +16,7 @@ describe('management API', () => {
     const token = (await pair.json() as any).managementToken
     const status = await handler(new Request('https://relay/v1/status', { headers: { authorization: `Bearer ${token}` } }))
     expect(status.status).toBe(200); expect(status.headers.get('cache-control')).toBe('no-store')
+    expect((await status.json() as any).capabilities.notificationContentModes).toEqual(['fixed', 'eventPreview'])
   })
   test('status never returns topic, management bearer or Hub credential', async () => {
     const store = new StateStore(await statePath()), manager = new RelayManager(store, { start: async () => {}, stop: async () => {}, restart: async () => {} } as any)

@@ -9,6 +9,7 @@ struct CompanionSettingsView: View {
     @State private var search = ""
     @State private var keyword = ""
     @State private var mobileTestSessionID = ""
+    @State private var confirmMobilePreview = false
     private let coral = Color(red: 0.94, green: 0.37, blue: 0.29)
 
     var body: some View {
@@ -303,6 +304,16 @@ struct CompanionSettingsView: View {
                 }
                 Text("手机使用与这台 Mac 相同的提醒规则。停用期间的提醒不会补发。")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("在手机通知中显示会话标题和回复摘要", isOn: Binding(
+                    get: { mobile.contentMode == .eventPreview },
+                    set: { enabled in
+                        if enabled { confirmMobilePreview = true }
+                        else { Task { await mobile.setContentMode(.fixed) } }
+                    }
+                ))
+                .disabled(mobile.busy || !mobile.supportsEventPreview)
+                Text(mobile.supportsEventPreview ? mobile.contentModeState : "当前 Relay 不支持此功能，请先升级 Relay")
+                    .font(.caption).foregroundStyle(.secondary)
                 if mobile.conflictRevision != nil && !mobile.conflictDeferred {
                     HStack {
                         Button("用这台 Mac 的规则覆盖") { Task { await mobile.sync(preferences: model.settings.preferences, force: true) } }
@@ -323,6 +334,15 @@ struct CompanionSettingsView: View {
             }
             if mobile.busy { ProgressView().controlSize(.small) }
             if let message = mobile.message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+        }
+        .alert("允许公共 ntfy 显示标题和摘要？", isPresented: $confirmMobilePreview) {
+            Button("允许并开启") {
+                mobile.grantEventPreviewConsent()
+                Task { await mobile.setContentMode(.eventPreview) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("开启后，公共 ntfy.sh 将收到 HAPI 通知标题和回复摘要，可能包含会话名、Agent 名称或任务内容，服务提供方可能缓存这些内容。关闭只影响后续通知，既有通知不会被远程删除。")
         }
     }
 

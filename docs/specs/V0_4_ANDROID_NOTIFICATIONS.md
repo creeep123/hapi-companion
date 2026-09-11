@@ -16,7 +16,7 @@ The user has already verified on an OPPO Find X9 Pro (PLG110, ColorOS 16.0.10) t
 - one independently running mobile-delivery worker on the Hub VM;
 - one durable Companion SSE connection and explicit ACK for that worker; no polling;
 - exact HAPI event URL sent as ntfy's `Click` action;
-- a fixed product title plus a fixed, non-sensitive completion summary; never the session title or agent response body;
+- fixed, non-sensitive product text by default, plus an optional explicitly authorized mode that forwards the same HAPI event title and reply summary used by the Mac;
 - the existing session ID/title-keyword, turn-duration and quiet-hours policy semantics;
 - a small “手机通知” section in the Mac settings window to enable delivery, create or rotate a random topic, show a scannable subscription QR code, send a real test, display worker health and remove the phone;
 - one phone in V0.4; data structures may support stable receiver IDs but no multi-phone management UI;
@@ -49,7 +49,9 @@ The settings UI reports independent facts instead of one “healthy” badge: ph
 
 Before setup continues, show this concrete disclosure:
 
-> 手机通知将通过公共服务 ntfy.sh 转发。该服务会收到固定的 HAPI 提示和对应会话链接，不会收到会话标题或 AI 回复正文。任何获得订阅地址的人都可能收到后续通知，请勿分享二维码或订阅地址。
+> 手机通知将通过公共服务 ntfy.sh 转发。默认只发送固定的 HAPI 提示和对应会话链接，不发送会话标题或 AI 回复正文；以后只有你另行确认并开启内容显示时才会发送标题和摘要。任何获得订阅地址的人都可能收到后续通知，请勿分享二维码或订阅地址。
+
+After activation, an optional “在手机通知中显示会话标题和回复摘要” switch appears near synchronization status. It remains off for every existing, missing or downgraded configuration. Enabling it requires a separate confirmation that public ntfy.sh will receive the HAPI event title and summary, which may contain a conversation name, Agent name, task content, path, URL or other sensitive text and may be cached by the provider. The switch turns on only after a capability check and successful revisioned Relay update. Disabling it immediately synchronizes fixed mode and explains that provider and handset history is not remotely deleted.
 
 ## Architecture
 
@@ -91,6 +93,7 @@ The relay stores a versioned record containing:
 - ntfy HTTPS base URL and random topic;
 - public HAPI origin used to validate event click URLs;
 - normalized reminder policy: scope, selected session IDs, literal keywords, duration setting, quiet-hours setting and IANA time-zone identifier;
+- content mode: `fixed` or `eventPreview`, defaulting to `fixed` when absent;
 - revision and timestamps, without notification contents.
 
 The Mac pushes the full normalized snapshot after setup and on each settings change/reconnect/time-zone change. `PUT` carries `expectedRevision`; `409` returns only the current non-secret revision. Local autosave may succeed while phone sync fails, but the shared footer must not claim everything is saved: Relay continues the last confirmed snapshot and the card reports the split until retry or an explicit conflict action succeeds. V0.4 documents one authoritative Mac controller.
@@ -99,7 +102,8 @@ The Mac pushes the full normalized snapshot after setup and on each settings cha
 
 - Reuse the current `ReminderPolicy` behavior in a platform-neutral fixture suite. The relay implementation must match session-ID/keyword OR semantics, strict duration threshold, permission-event bypass, unknown-duration pass-through and quiet-hour boundary behavior.
 - Never forward the event URL. Always construct exactly `https://<configured-HAPI-origin>/sessions/<percent-encoded-session-id>` and reject an invalid origin/session ID. No userinfo, alternate path, query or fragment is carried to ntfy.
-- Notification title/body are fixed product text: completion uses “HAPI 任务已完成”; permission requests use “HAPI 需要你处理”. No session title, transcript, filesystem path, credential, tool output or `AGENT_NOTIFY_SUMMARY` body is sent.
+- `fixed` mode uses product text: completion uses “HAPI 任务已完成”; permission requests use “HAPI 需要你处理”. `eventPreview` uses only the validated event title and summary after control-character cleanup and UTF-8-safe limits of 256 and 4096 bytes. Empty cleaned fields fall back individually to fixed text. It may contain sensitive user content; the Relay cannot reliably identify secrets inside an authorized preview.
+- The navigation URL is always rebuilt. Event URL, session name, machine ID, request ID, tag and all other event fields are excluded. Relay state, ledger, health and logs never store the forwarded title or summary.
 - ntfy uses `Click`, `Title` and priority. Do not use delayed publishing for production completions. Acceptance requires a 2xx response with expected ntfy JSON, event type, matching topic and a nonempty provider-generated message ID; it does not require our event ID to be echoed or assume provider deduplication. An HTML or reverse-proxy fallback 200 is failure.
 
 ### Delivery and ACK
@@ -115,7 +119,7 @@ The Mac pushes the full normalized snapshot after setup and on each settings cha
 ## Availability and privacy
 
 - V0.4 depends on the selected ntfy service and the phone maintaining its ntfy connection. A successful POST proves provider acceptance, not handset display.
-- The first release sends through public ntfy.sh: random topic, fixed title/body and HAPI session URL. The setup screen states this before enabling. Anyone who learns the topic can subscribe to future messages.
+- The first release sends through public ntfy.sh using a random topic and HAPI session URL. Fixed title/body remain the safe default. Event preview requires a separate persisted opt-in after Relay capability negotiation. Anyone who learns the topic can subscribe to future messages.
 - The HAPI URL may itself reveal a private hostname and session identifier. The product must support a self-hosted HTTPS ntfy base URL later and must not hard-code ntfy.sh outside defaults.
 - If the phone is unreachable, ntfy caching behavior is provider-controlled. The relay does not upload a second copy of message contents beyond the provider request.
 
@@ -142,7 +146,7 @@ The Mac pushes the full normalized snapshot after setup and on each settings cha
 - A4: topic has at least 128 bits of entropy; secrets are absent from source, logs, UI status, test fixtures and release artifacts.
 - A5: pairing-code entropy/TTL/single-use/rate limits and management bearer hashing pass; one instance cannot rebind Hub/device; stale revisions fail closed. Namespace isolation is supplied by the Hub-issued Relay device rather than caller input.
 - A6: click actions are rebuilt as the exact configured HTTPS origin plus encoded `/sessions/<id>`; hostile event URLs, userinfo/query/fragment, redirects and malformed IDs are covered. ntfy base URLs require HTTPS, never follow redirects and enforce request size/time limits.
-- A7: payload inspection proves no response body, transcript, filesystem path or HAPI/relay credential leaves for ntfy.
+- A7: fixed-mode payload inspection proves no event title/summary, transcript, filesystem path or HAPI/relay credential leaves for ntfy. Event-preview inspection proves only validated title/summary are forwarded after documented cleanup/limits and explicit opt-in; navigation and other event fields remain excluded. Neither mode writes notification content to Relay state, ledger, health or logs.
 
 ### Reliability
 

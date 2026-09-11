@@ -11,6 +11,14 @@ describe('NtfyClient', () => {
     expect(body.click).toBe('https://hapi.example/sessions/x')
     expect(body.priority).toBe(2)
     expect(JSON.stringify(body)).not.toContain('SECRET')
+    expect(Object.keys(body).sort()).toEqual(['click', 'message', 'priority', 'title', 'topic'])
+  })
+  test('eventPreview sends sanitized bounded event content but no other event fields', async () => {
+    let payload: any
+    const client = new NtfyClient(async (_input, init) => { payload = JSON.parse(String(init?.body)); return Response.json({ id: 'provider', event: 'message', topic: config().topic }) })
+    await client.post(config({ contentMode: 'eventPreview' }), event({ title: 'Preview', body: 'Visible', sessionName: 'SECRET SESSION', url: 'https://evil.example', machineId: 'SECRET MACHINE' }), 'https://hapi.example/sessions/x', false)
+    expect(payload).toEqual({ topic: config().topic, title: 'Preview', message: 'Visible', click: 'https://hapi.example/sessions/x' })
+    expect(JSON.stringify(payload)).not.toContain('SECRET')
   })
   test.each([[200, 'text/html', true], [302, 'application/json', true], [400, 'application/json', true], [404, 'application/json', true], [408, 'application/json', false], [429, 'application/json', false], [500, 'application/json', false]])('classifies HTTP %i', async (status, type, permanent) => {
     const client = new NtfyClient(async () => new Response(status === 200 ? '<html>' : '{}', { status, headers: { 'content-type': type, ...(status === 429 ? { 'retry-after': '2' } : {}) } }))

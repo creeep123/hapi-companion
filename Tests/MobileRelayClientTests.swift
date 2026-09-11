@@ -30,7 +30,7 @@ private final class RelayURLProtocol: URLProtocol, @unchecked Sendable {
         let body: String
         switch path {
         case "/v1/pair": body = #"{"managementToken":"secret"}"#
-        case "/v1/status": body = #"{"revision":3,"enabled":true,"paused":false,"activation":{"status":"committed","activationId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},"health":{"stream":"attention","lastAckSeq":8,"latestNtfyAcceptanceAt":1788768000000,"attentionCode":"ntfy_configuration_error"}}"#
+        case "/v1/status": body = #"{"revision":3,"enabled":true,"paused":false,"activation":{"status":"committed","activationId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},"health":{"stream":"attention","lastAckSeq":8,"latestNtfyAcceptanceAt":1788768000000,"attentionCode":"ntfy_configuration_error"},"capabilities":{"notificationContentModes":["fixed","eventPreview"]}}"#
         case "/v1/config": body = #"{"revision":4}"#
         case "/v1/test": body = #"{"accepted":true}"#
         case "/v1/activate": body = #"{"status":"committed"}"#
@@ -92,6 +92,7 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(status.lastAckSequence, 8)
         XCTAssertFalse(status.streamConnected)
         XCTAssertEqual(status.health.attentionCode, .ntfyConfigurationError)
+        XCTAssertEqual(status.capabilities.notificationContentModes, [.fixed, .eventPreview])
         let config = MobileRelayConfiguration(
             receiverId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", ntfyBaseUrl: "https://ntfy.sh",
             topic: "hapi-0123456789abcdef0123456789abcdef", hapiOrigin: "https://hapi.example", revision: 4,
@@ -111,6 +112,7 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(configJSON["expectedRevision"] as? Int, 3)
         let nested = try XCTUnwrap(configJSON["config"] as? [String: Any])
         XCTAssertEqual(nested["revision"] as? Int, 4)
+        XCTAssertEqual(nested["contentMode"] as? String, "fixed")
         XCTAssertEqual((nested["policy"] as? [String: Any])?["timeZone"] as? String, "Asia/Shanghai")
         let testJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: try XCTUnwrap(requests.first { $0.url?.path == "/v1/test" }?.httpBody)) as? [String: String])
         XCTAssertEqual(testJSON["sessionId"], "real/session")
@@ -149,6 +151,9 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         XCTAssertThrowsError(try JSONDecoder().decode(MobileRelayStatus.self, from: Data(unknownActivation.utf8)))
         let unknownStream = #"{"revision":1,"enabled":false,"paused":false,"activation":null,"health":{"stream":"secret_internal_state"}}"#
         XCTAssertThrowsError(try JSONDecoder().decode(MobileRelayStatus.self, from: Data(unknownStream.utf8)))
+        let legacy = #"{"revision":1,"enabled":false,"paused":false,"activation":null,"health":{"stream":"stopped"}}"#
+        let legacyStatus = try JSONDecoder().decode(MobileRelayStatus.self, from: Data(legacy.utf8))
+        XCTAssertTrue(legacyStatus.capabilities.notificationContentModes.isEmpty)
     }
 
     func testConflictResponseReadsRevisionFromHeterogeneousErrorBody() async throws {

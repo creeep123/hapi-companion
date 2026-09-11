@@ -22,7 +22,7 @@ HAPI Companion is the native attention layer for HAPI on macOS. Its job is delib
 - becoming a general-purpose notification center;
 - copying long-lived HAPI credentials outside the existing CLI configuration.
 
-The initial macOS-only boundary is expanded by V0.4 solely for an Android notification receiver. HAPI remains the user interface: the phone notification opens its authoritative session URL in the installed PWA. No replacement mobile HAPI client is introduced. See [V0.4 Android notifications](specs/V0_4_ANDROID_NOTIFICATIONS.md).
+The initial macOS-only boundary is expanded by V0.4 solely for an Android notification receiver. HAPI remains the user interface: the phone notification opens its authoritative session URL in the installed PWA. Notifications use fixed product text by default; users may separately opt in to sending the HAPI event title and reply summary through ntfy after a capability and privacy check. No replacement mobile HAPI client is introduced. See [V0.4 Android notifications](specs/V0_4_ANDROID_NOTIFICATIONS.md).
 
 ## Runtime architecture
 

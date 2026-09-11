@@ -1,6 +1,8 @@
 # HAPI Companion Mobile Relay
 
-The Relay is the VM-side Android notification worker for Companion V0.4. It consumes one durable Hub SSE as an independent device, evaluates the shared reminder policy, posts fixed metadata to ntfy, persists a handled ledger and ACKs only afterward.
+The Relay is the VM-side Android notification worker for Companion V0.4. It consumes one durable Hub SSE as an independent device, evaluates the shared reminder policy, posts bounded notification content to ntfy, persists a handled ledger and ACKs only afterward.
+
+Relay 0.4.1 supports `fixed` notification content by default and the explicitly selected `eventPreview` mode. Preview mode forwards only the validated HAPI event title and body after control-character cleanup and UTF-8 byte limits; it never forwards the event URL or other event fields. Public-provider preview use requires an explicit privacy opt-in in the controlling client.
 
 ```bash
 bun install --frozen-lockfile

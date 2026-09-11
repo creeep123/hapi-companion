@@ -41,7 +41,7 @@ export class RelayManager {
   async test(sessionId: string): Promise<void> {
     const s = await this.store.load(); if (!s.config) throw new Error('not configured')
     const event: CompanionEvent = { version: 1, eventId: crypto.randomUUID(), createdAt: this.now(), kind: 'session-completed', title: '', body: '', severity: 'success', sessionId, sessionName: '', url: '' }
-    await this.ntfy.post(s.config, event, clickUrl(s.config, event.sessionId), false)
+    await this.ntfy.post({ ...s.config, contentMode: 'fixed' }, event, clickUrl(s.config, event.sessionId), false)
     await this.store.update(x => { x.health.latestNtfyAcceptanceAt = this.now() })
   }
   async activate(input: any): Promise<'committed'> {

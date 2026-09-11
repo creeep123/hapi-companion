@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { StateStore } from '../src/state'
 import { statePath } from './helpers'
 
@@ -23,11 +23,18 @@ describe('StateStore', () => {
   test('rejects committed activation whose credential belongs to another device', async () => {
     const path = await statePath(), store = new StateStore(path)
     await store.update(s => {
-      s.config = { receiverId: 'r', revision: 1, hapiOrigin: 'https://hapi.example', ntfyBaseUrl: 'https://ntfy.sh', topic: 'abcdefghijklmnopqrstuv', policy: { scope: 'all', selectedSessionIds: [], keywords: [], durationEnabled: false, minimumMinutes: 1, quietEnabled: false, quietStartMinutes: 0, quietEndMinutes: 0, quietMode: 'mute', timeZone: 'UTC' } }
+      s.config = { receiverId: 'r', revision: 1, hapiOrigin: 'https://hapi.example', ntfyBaseUrl: 'https://ntfy.sh', topic: 'abcdefghijklmnopqrstuv', contentMode: 'fixed', policy: { scope: 'all', selectedSessionIds: [], keywords: [], durationEnabled: false, minimumMinutes: 1, quietEnabled: false, quietStartMinutes: 0, quietEndMinutes: 0, quietMode: 'mute', timeZone: 'UTC' } }
       s.credential = { deviceId: '11111111-1111-4111-8111-111111111111', token: 'x'.repeat(40) }
       s.activation = { activationId: '22222222-2222-4222-8222-222222222222', installationId: '33333333-3333-4333-8333-333333333333', deviceId: '44444444-4444-4444-8444-444444444444', status: 'committed', requestFingerprint: 'a'.repeat(64) }
       s.enabled = true
     })
     await expect(store.load()).rejects.toThrow('invalid committed activation')
+  })
+  test('loads legacy schema v1 config without contentMode as fixed and persists the canonical field on update', async () => {
+    const path = await statePath(), store = new StateStore(path)
+    const legacy: any = { schemaVersion: 1, enabled: false, paused: false, handled: {}, health: { stream: 'stopped' }, config: { receiverId: 'r', revision: 1, hapiOrigin: 'https://hapi.example', ntfyBaseUrl: 'https://ntfy.sh', topic: 'abcdefghijklmnopqrstuv', policy: { scope: 'all', selectedSessionIds: [], keywords: [], durationEnabled: false, minimumMinutes: 1, quietEnabled: false, quietStartMinutes: 0, quietEndMinutes: 0, quietMode: 'mute', timeZone: 'UTC' } } }
+    await Bun.write(path, JSON.stringify(legacy)); expect((await store.load()).config?.contentMode).toBe('fixed')
+    await store.update(() => undefined)
+    expect(JSON.parse(await readFile(path, 'utf8')).config.contentMode).toBe('fixed')
   })
 })

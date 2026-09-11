@@ -18,6 +18,7 @@ The reverse proxy must overwrite `X-Forwarded-For`; the Relay uses its first val
   "revision": 1,
   "enabled": true,
   "paused": false,
+  "capabilities": { "notificationContentModes": ["fixed", "eventPreview"] },
   "activation": { "status": "committed", "activationId": "uuid" },
   "health": { "stream": "connected", "lastAckSeq": 12, "latestNtfyAcceptanceAt": 1788800000000 }
 }
@@ -36,6 +37,7 @@ An absent activation is returned as `null`; clients must retry the same activati
     "ntfyBaseUrl": "https://ntfy.sh",
     "topic": "at-least-128-bits-of-randomness",
     "hapiOrigin": "https://hapi.example",
+    "contentMode": "fixed",
     "policy": {
       "scope": "all",
       "selectedSessionIds": [],
@@ -52,7 +54,9 @@ An absent activation is returned as `null`; clients must retry the same activati
 }
 ```
 
-- `POST /v1/test` with `{ "sessionId": "an-id-from-the-Hub-catalog" }` posts one real ntfy test and returns `{ "accepted": true }` only after a valid ntfy acceptance response.
+`contentMode` is `fixed` or `eventPreview`. An omitted field from a legacy schema-v1 state/config is canonicalized to `fixed`; unknown values and wrong JSON types are rejected. Clients must observe `capabilities.notificationContentModes` before offering or claiming synchronization of preview mode. In `eventPreview`, only the validated event title and body are eligible for ntfy: title is sanitized and capped at 256 UTF-8 bytes, body normalizes newlines, removes other controls and is capped at 4096 UTF-8 bytes. Invalid surrogate code units are replaced and truncation never cuts a Unicode code point. Empty fields fall back independently to fixed product text. The click URL is always reconstructed from `hapiOrigin` and `sessionId`; event URL and all other event fields are excluded.
+
+- `POST /v1/test` with `{ "sessionId": "an-id-from-the-Hub-catalog" }` posts one ntfy test with fixed safe product text, regardless of configured content mode, and returns `{ "accepted": true }` only after a valid ntfy acceptance response.
 - `POST /v1/activate` with `{ "activationId", "installationId", "deviceId", "token", "revision" }`. IDs are UUIDs and the token is write-only. Success is `{ "status": "committed" }`; same-ID retries are idempotent and a competing activation returns 409.
 - `POST /v1/repair` with `{ "activationId", "installationId", "deviceId", "token" }` explicitly replaces a rejected Hub device credential for the committed installation.
 - `POST /v1/pause` with `{ "paused": true|false }`. Paused events are durably handled and ACKed without an ntfy post.

@@ -21,7 +21,7 @@ Before upgrade, record a hash and take an encrypted backup. Rollback must restor
 After verifying the artifact, run as root:
 
 ```bash
-./scripts/install-mobile-relay.sh /path/to/hapi-mobile-relay 0.4.0 <binary-sha256>
+./scripts/install-mobile-relay.sh /path/to/hapi-mobile-relay 0.4.1 <binary-sha256>
 systemctl enable --now hapi-mobile-relay
 systemctl status hapi-mobile-relay
 curl -fsS http://127.0.0.1:8789/health
@@ -50,13 +50,15 @@ The printed code has at least 128 bits of entropy, expires after ten minutes and
 
 Only `/health` and `/v1/pair` are unauthenticated. Status, configuration, test, activation, repair, pause, receiver removal and unpair require the Relay management bearer. Responses use `Cache-Control: no-store` and never return stored topics or Hub credentials.
 
-The Mac sends a real catalog `sessionId` to `/v1/test`; the Relay rebuilds the exact click target from the configured HAPI HTTPS origin. Test does not create or ACK a Hub event. After the user confirms receipt/opening, the Mac registers a stable Relay installation with the existing Hub API and commits it with a stable `activationId`. Same-ID activation requires an identical persisted request fingerprint; a competing payload fails with 409. An unknown result remains pending and is queried/retried—temporary absence is not proof of rejection and must not trigger Hub deletion. Explicit rejection is compensated through the existing Hub DELETE route. Invalid committed Hub credentials are replaced only through the explicit authenticated repair operation. Configuration updates restart the stream reliably; repaired attention states use authenticated `/v1/resume`.
+The Mac sends a real catalog `sessionId` to `/v1/test`; the Relay rebuilds the exact click target from the configured HAPI HTTPS origin and always uses fixed safe test text. Test does not create or ACK a Hub event. After the user confirms receipt/opening, the Mac registers a stable Relay installation with the existing Hub API and commits it with a stable `activationId`. Same-ID activation requires an identical persisted request fingerprint; a competing payload fails with 409. An unknown result remains pending and is queried/retried—temporary absence is not proof of rejection and must not trigger Hub deletion. Explicit rejection is compensated through the existing Hub DELETE route. Invalid committed Hub credentials are replaced only through the explicit authenticated repair operation. Configuration updates restart the stream reliably; repaired attention states use authenticated `/v1/resume`.
+
+Relay 0.4.1 adds top-level config `contentMode`. Missing legacy values become `fixed`; supported values are `fixed` and `eventPreview`. Authenticated status advertises `capabilities.notificationContentModes`; a controller must check this before enabling or reporting preview synchronization. `eventPreview` is privacy-sensitive and may be enabled with public ntfy only after a separate explicit user opt-in. It sends the validated event title (maximum 256 UTF-8 bytes) and body (maximum 4096 UTF-8 bytes) after Unicode/control-character cleanup. It does not persist those fields in state, ledger, health or logs. The event URL and all other event fields remain excluded, and the click target is always rebuilt. Changing content mode is a revisioned configuration update and follows the same stream restart, ledger-before-ACK and at-least-once boundary as destination rotation.
 
 Pausing keeps the single SSE active and durably handles/ACKs arrivals without ntfy posts. Removing stops the stream and clears receiver state; the controlling Mac then disables the Hub device. A repeated Hub DELETE 404 means already removed.
 
 ## Acceptance and observability
 
-Public `/health` proves only that the process answers. Authenticated `/v1/status` separately reports configuration revision, enabled/paused state, Hub stream status, last ACK, last ntfy acceptance and attention state. Provider acceptance never proves handset display.
+Public `/health` proves only that the process answers. Authenticated `/v1/status` separately reports configuration revision, supported notification-content modes, enabled/paused state, Hub stream status, last ACK, last ntfy acceptance and attention state. Provider acceptance never proves handset display.
 
 Use the Mac settings card for normal readiness checks. For an operator diagnostic on the paired Mac, keep the bearer out of command history and process arguments by using a private temporary curl config:
 
