@@ -8,10 +8,12 @@ private final class ServiceStubState: @unchecked Sendable {
     private var deletes = 0
     private var saves = 0
     let catalogStatus: Int
+    let relayDeleteStatus: Int
 
-    init(credential: CompanionCredential?, catalogStatus: Int) {
+    init(credential: CompanionCredential?, catalogStatus: Int, relayDeleteStatus: Int = 204) {
         stored = credential
         self.catalogStatus = catalogStatus
+        self.relayDeleteStatus = relayDeleteStatus
     }
     func load() -> CompanionCredential? { lock.withLock { stored } }
     func save(_ value: CompanionCredential) { lock.withLock { stored = value; saves += 1 } }
@@ -28,6 +30,8 @@ private final class ServiceStubState: @unchecked Sendable {
             return (200, Data(#"{"token":"fixture-jwt"}"#.utf8))
         case "/api/companion/devices/register":
             return (200, Data(#"{"deviceId":"fixture-device","token":"fixture-device-token"}"#.utf8))
+        case "/api/companion/devices/fixture-device" where request.httpMethod == "DELETE":
+            return (relayDeleteStatus, Data())
         case "/companion/sessions":
             guard request.value(forHTTPHeaderField: "X-Hapi-Device-Id") == "fixture-device",
                   request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-device-token",
@@ -72,12 +76,12 @@ private final class ServiceFixture: @unchecked Sendable {
     private let defaults: UserDefaults
     private let suite: String
 
-    init(paired: Bool = true, catalogStatus: Int = 200) {
+    init(paired: Bool = true, catalogStatus: Int = 200, relayDeleteStatus: Int = 204) {
         let host = UUID().uuidString.lowercased() + ".invalid"
         let url = URL(string: "https://\(host)")!
         hubURL = url
         let credential = paired ? CompanionCredential(hubURL: url, deviceId: "fixture-device", token: "fixture-device-token") : nil
-        let state = ServiceStubState(credential: credential, catalogStatus: catalogStatus)
+        let state = ServiceStubState(credential: credential, catalogStatus: catalogStatus, relayDeleteStatus: relayDeleteStatus)
         self.state = state
         ServiceURLProtocol.registry.set(state, host: host)
         let configuration = URLSessionConfiguration.ephemeral
@@ -149,5 +153,23 @@ final class CompanionServiceTests: XCTestCase, @unchecked Sendable {
             XCTAssertEqual(snapshot.saves, 0)
             XCTAssertEqual(snapshot.paths, ["/companion/sessions"])
         }
+    }
+
+    func testRelayRegistrationAndDeletionUseFreshUserJWT() async throws {
+        let fixture = ServiceFixture()
+        let registration = try await fixture.service.registerRelay(
+            installationId: "11111111-1111-4111-8111-111111111111", name: "Mobile Relay"
+        )
+        XCTAssertEqual(registration.deviceId, "fixture-device")
+        try await fixture.service.deleteRelay(deviceId: registration.deviceId)
+        XCTAssertEqual(fixture.state.snapshot().paths, [
+            "/api/auth", "/api/companion/devices/register", "/api/auth", "/api/companion/devices/fixture-device"
+        ])
+    }
+
+    func testRelayDeletionTreatsMissingHubDeviceAsSuccess() async throws {
+        let fixture = ServiceFixture(relayDeleteStatus: 404)
+        try await fixture.service.deleteRelay(deviceId: "fixture-device")
+        XCTAssertEqual(fixture.state.snapshot().paths, ["/api/auth", "/api/companion/devices/fixture-device"])
     }
 }

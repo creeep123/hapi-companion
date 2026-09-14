@@ -1,0 +1,4 @@
+a694096b0eb5a5a4a716b60bb984eb260ab04021fdc4ddf72493d4f937663fcb  docs/audio/candidates/pixel/originals/coin-clear.wav
+954063125ae5107419a874b37147e1d94526c29d92cd182867e854873eccc000  docs/audio/candidates/pixel/originals/coin-double.wav
+ee56466a338689130341ab799300229340affce48b68acf11eed36ad601097a1  docs/audio/candidates/pixel/previews/coin-clear-preview.wav
+2b4347897599a6c53f705a680f62a882f9e9ced79da954c5a03c030a8e193c2f  docs/audio/candidates/pixel/previews/coin-double-preview.wav

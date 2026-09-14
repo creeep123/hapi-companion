@@ -10,6 +10,7 @@ final class CompanionModel {
     private let service: CompanionService
     let updates: CompanionUpdates
     let sounds: ReminderSounds
+    let mobile: MobileNotificationController
     private let defaults: UserDefaults
     private let preview: Bool
     private var started = false
@@ -36,6 +37,14 @@ final class CompanionModel {
             .appending(path: "HAPI Companion/PreviewSounds", directoryHint: .isDirectory) : nil
         sounds = ReminderSounds(defaults: defaults, directory: previewSounds)
         settings = ReminderSettingsStore(defaults: defaults)
+        mobile = MobileNotificationController(
+            defaults: defaults,
+            registerDevice: { try await service.registerRelay(installationId: $0, name: $1) },
+            deleteDevice: { try await service.deleteRelay(deviceId: $0) }
+        )
+        settings.changeHandler = { [weak mobile] preferences in
+            Task { @MainActor in mobile?.enqueueSync(preferences: preferences) }
+        }
     }
 
     func start() async {
@@ -62,7 +71,10 @@ final class CompanionModel {
             catalogLoaded = true
             return
         }
-        do { configure(hubURL: try CompanionConfiguration.load().hubURL) }
+        do {
+            configure(hubURL: try CompanionConfiguration.load().hubURL)
+            await mobile.refreshStatus()
+        }
         catch { status = error.localizedDescription }
         enableLoginItem()
         // Permission failure must not prevent user-rule suppressions from being ACKed.
@@ -70,7 +82,10 @@ final class CompanionModel {
             guard let self else { return false }
             return await self.deliver(event, hubURL: hubURL)
         }, onStatus: { [weak self] status in
-            await MainActor.run { self?.status = status }
+            await MainActor.run {
+                self?.status = status
+                if status == "已连接 HAPI Hub", let self { self.mobile.enqueueSync(preferences: self.settings.preferences) }
+            }
         })
         await requestNotificationPermission()
     }
@@ -79,6 +94,7 @@ final class CompanionModel {
         if let currentHubURL, CompanionConfiguration.sameOrigin(currentHubURL, hubURL) { return }
         currentHubURL = hubURL
         settings.configure(hubURL: hubURL)
+        mobile.configure(hubURL: hubURL, preferences: settings.preferences)
         catalog = []
         catalogLoaded = false
         durationSupported = false
@@ -194,8 +210,8 @@ final class CompanionModel {
         content.body = "这是一条测试提醒，不受会话筛选和勿扰规则限制。"
         do {
             try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
-            lastAction = playSound() ? "测试提醒已发送" : "测试横幅已发送，但提示音播放失败"
-        } catch { lastAction = "测试提醒失败：\(error.localizedDescription)" }
+            lastAction = playSound() ? "Mac 测试提醒已发送" : "Mac 测试横幅已发送，但提示音播放失败"
+        } catch { lastAction = "Mac 测试提醒失败：\(error.localizedDescription)" }
     }
 
     func openEventURL(_ value: String, fallbackSessionId: String) {

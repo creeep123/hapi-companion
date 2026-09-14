@@ -9,7 +9,7 @@ The native app depends on a device-scoped, durable notification transport that u
 - Baseline description: HAPI `v0.29.0-2-gd3d4fd17`
 - Patch schema level: database schema v26
 - Updated for Companion v0.2: 2026-09-08
-- Cumulative patch SHA-256: `2a96be323c0d837793d32fd20fffc44efd6828e6a9263da5ebffcc5cf79e95bd`
+- Cumulative patch SHA-256: `399b6afc8e5ec1b6ad2a32152b3008905f697c42d68ca2325b4489e1ae60b0cf`
 
 Because HAPI evolves, treat this patch as a reviewed reference rather than a timeless installer.
 

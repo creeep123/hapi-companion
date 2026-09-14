@@ -17,3 +17,7 @@ User rejected the first pack as too short and quiet. Replace its five one-shot e
 - Add app-only 0–100% playback volume, default 80%; persist separately so old sound/custom metadata decode unchanged and imports do not reset volume. Slider affects preset/custom/test/fallback consistently; never changes system volume. At 0%, intentional silence succeeds after banner delivery without invoking audio playback; failure at nonzero volume still blocks ACK.
 - Custom audio is volume-controlled but is not automatically LUFS-normalized in this revision; communicate this in UI.
 - Tests: volume default/migration/clamping/persistence, import independence, gain supplied to playback/fallback, zero-volume semantics, existing quiet/ACK tests; automated loudness verification and native slider/import preview acceptance.
+
+## Revision 3 — selected pixel coin cues (2026-09-14)
+
+Add the user-approved “像素金币 · 清脆” and “像素金币 · 双音” presets from FrogPog's CC0 Chiptune SFX Pack. These deliberate 0.24/0.35-second exceptions preserve their compact coin character. Measure their calibration with a two-second silent tail so integrated loudness is stable, but keep the exported playback files at their original duration. They use the same -23 LUFS target, volume control, persistence, preview, fallback and quiet-hour behavior as every preset.

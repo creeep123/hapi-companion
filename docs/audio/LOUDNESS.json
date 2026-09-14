@@ -9,6 +9,7 @@
       "duration_seconds": 1.6501,
       "source": "Resources/HapiComplete.aiff",
       "source_sha256": "b337d8e01066c30de2f296763609b7e488bb3c6ea817aa875ee999d708433cf9",
+      "measurement_silence_seconds": 0,
       "gain_db": 2.82,
       "sha256": "2e46ee1d2126e06e838713fd6920bc992d1fb429667fafb5125c9886259059ae"
     },
@@ -18,6 +19,7 @@
       "duration_seconds": 1.7288,
       "source": "docs/audio/aosp-originals/pixiedust.ogg",
       "source_sha256": "e325e573e3e5d66c4ea3b6b33dcc5fbde30d849632aadf958cec0e5662f025dd",
+      "measurement_silence_seconds": 0,
       "gain_db": -10.32,
       "sha256": "9d071b0aef7c77a5236b225435bdcf79de7a3dbfd56f619dd72db486fc9d6ae4"
     },
@@ -27,6 +29,7 @@
       "duration_seconds": 1.8743,
       "source": "docs/audio/aosp-originals/moonbeam.ogg",
       "source_sha256": "9067df8132abcd13a955c9499f3389cdbe83061ed8eb0b43916eb0fc4575d2bd",
+      "measurement_silence_seconds": 0,
       "gain_db": -3.65,
       "sha256": "790be7e1f75a540a90fcd59cc5f9d9522bd8558b5eec880d8ba2f269c09485c6"
     },
@@ -36,6 +39,7 @@
       "duration_seconds": 1.2,
       "source": "docs/audio/aosp-originals/Tejat.ogg",
       "source_sha256": "e21a04b2b4ab80f43adec00c9171f9d47d2aa4089105aa2a74cdca93b9378d5a",
+      "measurement_silence_seconds": 0,
       "gain_db": -9.06,
       "sha256": "50086cb10bbb229736a4face66f22fefc20a1203798806feb6a842ee75e65834"
     },
@@ -45,6 +49,7 @@
       "duration_seconds": 1.3794,
       "source": "docs/audio/aosp-originals/Capella.ogg",
       "source_sha256": "cf23a4477c741dcea8aa893139c6aaa889a9c565bcb73bb584f1e0a3adc78b43",
+      "measurement_silence_seconds": 0,
       "gain_db": -4.43,
       "sha256": "6a3ef23a2649b8b28e49c81ea3f1fa6c2d569c283d87199c12125ff378b71f41"
     },
@@ -54,8 +59,29 @@
       "duration_seconds": 2.8764,
       "source": "docs/audio/aosp-originals/CetiAlpha.ogg",
       "source_sha256": "4ca3ec88140119670c04420cd2ee247f7cd759108b4b15ce0fa435846cfb7a1b",
+      "measurement_silence_seconds": 0,
       "gain_db": 1.89,
       "sha256": "8265aaca83b1bb7745c3b462095a058af26e98937e2e1f8ee98a6bd2244df015"
+    },
+    "SoundPixelCoinClear": {
+      "lufs": -22.99,
+      "true_peak_dbtp": -13.57,
+      "duration_seconds": 0.2443,
+      "source": "docs/audio/candidates/pixel/originals/coin-clear.wav",
+      "source_sha256": "a694096b0eb5a5a4a716b60bb984eb260ab04021fdc4ddf72493d4f937663fcb",
+      "measurement_silence_seconds": 2.0,
+      "gain_db": 3.63,
+      "sha256": "0383b7ade28e2d5ce9ca2b993a9da19a8dfb71a4c4e20ae560e3bf80c0463392"
+    },
+    "SoundPixelCoinDouble": {
+      "lufs": -23.02,
+      "true_peak_dbtp": -16.98,
+      "duration_seconds": 0.3471,
+      "source": "docs/audio/candidates/pixel/originals/coin-double.wav",
+      "source_sha256": "954063125ae5107419a874b37147e1d94526c29d92cd182867e854873eccc000",
+      "measurement_silence_seconds": 2.0,
+      "gain_db": 0.24,
+      "sha256": "b5a98450672db9c53f68a58754d7c6b6408d855266afa074d9c018bb61a249f0"
     }
   }
 }

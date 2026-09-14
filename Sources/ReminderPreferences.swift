@@ -42,6 +42,7 @@ final class ReminderSettingsStore {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var storageKey: String?
     @ObservationIgnored private var loading = false
+    @ObservationIgnored var changeHandler: (@Sendable (ReminderPreferences) -> Void)?
     private(set) var isConfigured = false
     var preferences = ReminderPreferences() {
         didSet {
@@ -52,6 +53,7 @@ final class ReminderSettingsStore {
             if let data = try? JSONEncoder().encode(StoredPreferences(version: 1, preferences: normalized)) {
                 defaults.set(data, forKey: storageKey)
             }
+            changeHandler?(normalized)
         }
     }
 

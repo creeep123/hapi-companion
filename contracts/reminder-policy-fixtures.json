@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cases": [
+    { "name": "all sessions", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "日常回答", "kind": "ready", "createdAt": 1788768000000 }, "policy": {}, "decision": "sound" },
+    { "name": "specified stable id", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "已改名", "kind": "ready", "createdAt": 1788768000000 }, "policy": { "scope": "specified", "selectedSessionIds": ["s1"] }, "decision": "sound" },
+    { "name": "literal unicode keyword", "now": 1788768000000, "event": { "sessionId": "s2", "sessionName": "Mon CAFÉ 发布", "kind": "ready", "createdAt": 1788768000000 }, "policy": { "scope": "specified", "keywords": [" café "] }, "decision": "sound" },
+    { "name": "no specified match", "now": 1788768000000, "event": { "sessionId": "s2", "sessionName": "其他", "kind": "ready", "createdAt": 1788768000000 }, "policy": { "scope": "specified", "selectedSessionIds": [], "keywords": [] }, "decision": "suppress" },
+    { "name": "duration equals threshold", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788768000000, "durationMs": 60000 }, "policy": { "durationEnabled": true, "minimumMinutes": 1 }, "decision": "suppress" },
+    { "name": "duration exceeds threshold", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788768000000, "durationMs": 60001 }, "policy": { "durationEnabled": true, "minimumMinutes": 1 }, "decision": "sound" },
+    { "name": "unknown duration passes", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788768000000 }, "policy": { "durationEnabled": true, "minimumMinutes": 1 }, "decision": "sound" },
+    { "name": "permission bypass duration", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "permission-request", "createdAt": 1788768000000, "durationMs": 1 }, "policy": { "durationEnabled": true, "minimumMinutes": 1 }, "decision": "sound" },
+    { "name": "overnight delivery quiet", "now": 1788796800000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788796800000 }, "policy": { "quietEnabled": true, "quietStartMinutes": 1320, "quietEndMinutes": 480, "quietMode": "mute", "timeZone": "Asia/Shanghai" }, "decision": "quiet" },
+    { "name": "event-created quiet on replay", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788796800000 }, "policy": { "quietEnabled": true, "quietStartMinutes": 1320, "quietEndMinutes": 480, "quietMode": "suppress", "timeZone": "Asia/Shanghai" }, "decision": "suppress" },
+    { "name": "equal bounds all day", "now": 1788768000000, "event": { "sessionId": "s1", "sessionName": "任务", "kind": "ready", "createdAt": 1788768000000 }, "policy": { "quietEnabled": true, "quietStartMinutes": 600, "quietEndMinutes": 600, "quietMode": "mute", "timeZone": "UTC" }, "decision": "quiet" }
+  ]
+}

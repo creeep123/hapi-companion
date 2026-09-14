@@ -19,7 +19,7 @@ enum CompanionServiceError: LocalizedError {
 }
 
 private struct AuthResponse: Decodable { let token: String }
-private struct RegistrationResponse: Decodable {
+struct RegistrationResponse: Decodable, Sendable {
     let deviceId: String
     let token: String
 }
@@ -197,6 +197,51 @@ actor CompanionService {
         if status == 404 || status == 501 { throw CompanionServiceError.catalogUnsupported }
         guard status == 200 else { throw CompanionServiceError.serverStatus(status) }
         return (try JSONDecoder().decode(CompanionCatalog.self, from: data), credential.hubURL)
+    }
+
+    func registerRelay(installationId: String, name: String) async throws -> RegistrationResponse {
+        let configuration = try loadConfiguration()
+        let jwt = try await userJWT(configuration: configuration)
+        var request = URLRequest(url: configuration.hubURL.appending(path: "api/companion/devices/register"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["installationId": installationId, "name": name])
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            if status == 401 { throw CompanionServiceError.pairingUnauthorized }
+            throw CompanionServiceError.serverStatus(status)
+        }
+        return try JSONDecoder().decode(RegistrationResponse.self, from: data)
+    }
+
+    func deleteRelay(deviceId: String) async throws {
+        let configuration = try loadConfiguration()
+        let jwt = try await userJWT(configuration: configuration)
+        var request = URLRequest(url: configuration.hubURL.appending(path: "api/companion/devices/\(deviceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deviceId)"))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 204 || status == 404 else {
+            if status == 401 { throw CompanionServiceError.pairingUnauthorized }
+            throw CompanionServiceError.serverStatus(status)
+        }
+    }
+
+    private func userJWT(configuration: CompanionConfiguration) async throws -> String {
+        var request = URLRequest(url: configuration.hubURL.appending(path: "api/auth"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["accessToken": configuration.cliAPIToken])
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            if status == 401 { throw CompanionServiceError.pairingUnauthorized }
+            throw CompanionServiceError.serverStatus(status)
+        }
+        return try JSONDecoder().decode(AuthResponse.self, from: data).token
     }
 
     private func acknowledge(_ seq: Int, eventId: String, credential: CompanionCredential) async throws {

@@ -6,7 +6,7 @@
 
 <p align="center"><a href="https://github.com/creeep123/hapi-companion/releases/tag/v0.3.1">Download v0.3.1</a> · <a href="docs/brand/BRAND_GUIDELINES.md">Brand assets</a> · <a href="integrations/hapi/README.md">Hub integration</a></p>
 
-Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS.
+Native, audible task-completion notifications for self-hosted [HAPI](https://github.com/tiann/hapi) on macOS. V0.4 is adding an optional Android channel through the official ntfy app and a small Relay on the Hub VM; it is still a deployment candidate, not the current public release.
 
 HAPI Companion is a tiny menu-bar app for people who run coding agents through HAPI. It keeps one server-sent-events connection to your Hub, plays a bundled completion sound, shows a native macOS notification, and returns you to the exact HAPI conversation when you click it.
 
@@ -31,6 +31,8 @@ Browser/PWA notifications are easy to miss on macOS: sound behavior depends on b
 ## Agent quick start
 
 **全新 Mac + 自有服务器，且需要后续安全升级：先读 [新环境安装引导](docs/agents/NEW_INSTALL.md)。** 本项目负责提醒；[HAPI Safe Updater](https://github.com/creeep123/hapi-safe-updater) 负责保留 Hub 补丁的安全升级。两个仓库任一入口均应引导 Agent 完成两边配置与验收。下方命令仅适用于已有兼容 Hub 的 Mac 安装。
+
+如需 Android 通知，还要在 Hub VM 安装本仓库的 Mobile Relay，并在手机安装官方 ntfy。Relay 直接连接 Hub，所以 Mac 休眠后仍可通知；手机沿用 Mac 配置的会话、关键词、时长和勿扰规则。部署前请按 [V0.4 Relay 运维手册](docs/deployments/V0_4_MOBILE_RELAY_RUNBOOK.md) 操作。V0.4 尚未发布，不能把当前 `main` 的 v0.3.1 当作已包含该功能。
 
 This repository is intentionally installable by a coding agent. Give the agent this instruction:
 
@@ -141,7 +143,7 @@ HAPI Companion requires the durable notification outbox and three routes supplie
 
 ## Current limitations
 
-- macOS only.
+- 当前公开版为 macOS only；Android ntfy 通知处于 V0.4 部署候选阶段。
 - Existing-window targeting currently supports Microsoft Edge PWAs.
 - Local ad-hoc builds re-pair after replacement. A public binary release should use Developer ID signing and notarization.
 - The Hub integration is maintained as a patch until it is accepted upstream or published as a maintained HAPI fork.

@@ -22,6 +22,8 @@ HAPI Companion is the native attention layer for HAPI on macOS. Its job is delib
 - becoming a general-purpose notification center;
 - copying long-lived HAPI credentials outside the existing CLI configuration.
 
+The initial macOS-only boundary is expanded by V0.4 solely for an Android notification receiver. HAPI remains the user interface: the phone notification opens its authoritative session URL in the installed PWA. Notifications use fixed product text by default; users may separately opt in to sending the HAPI event title and reply summary through ntfy after a capability and privacy check. No replacement mobile HAPI client is introduced. See [V0.4 Android notifications](specs/V0_4_ANDROID_NOTIFICATIONS.md).
+
 ## Runtime architecture
 
 The Hub composes completion events into a durable outbox. Each registered Companion installation has an isolated ACK cursor. The menu-bar app keeps one authenticated SSE stream open, submits a native notification, starts its bundled sound, records the event ID locally, then ACKs it. V0.2 evaluates local reminder rules first: intentional suppression is recorded and ACKed without side effects; quiet mute mode requires only successful banner submission. Required delivery or sound-start failures are not ACKed and can be replayed.

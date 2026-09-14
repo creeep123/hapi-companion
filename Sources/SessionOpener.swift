@@ -17,31 +17,9 @@ struct SessionOpener {
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) {
         if let pwa = findInstalledEdgePWA(for: hubOrigin) {
-            findExistingEdgeWindow(origin: hubOrigin) { found in
-                if found {
-                    focusPWA(at: pwa) { focusResult in
-                        switch focusResult {
-                        case .failure(let error):
-                            CompanionLog.error("installed PWA focus failed: \(error.localizedDescription)")
-                            launchPWA(at: pwa, url: url, completion: completion)
-                        case .success:
-                            // Opening the PWA shim raises its existing app window, but may also
-                            // restore its start URL. Navigate only after that activation settles.
-                            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.5) {
-                                navigateExistingEdgeWindow(url: url, origin: hubOrigin) { reused in
-                                    if reused {
-                                        completion(.success("现有 Edge HAPI PWA 窗口中的对应会话"))
-                                    } else {
-                                        launchPWA(at: pwa, url: url, completion: completion)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    launchPWA(at: pwa, url: url, completion: completion)
-                }
-            }
+            // Pass the deep link to the installed PWA in one launch request. A supported
+            // HAPI PWA consumes it with Launch Handler and changes its SPA route in place.
+            launchPWA(at: pwa, url: url, completion: completion)
             return
         }
 
@@ -72,76 +50,6 @@ struct SessionOpener {
         return nil
     }
 
-    private func findExistingEdgeWindow(
-        origin: URL,
-        completion: @escaping @Sendable (Bool) -> Void
-    ) {
-        let originValue = appleScriptLiteral(originPrefix(origin))
-        let source = """
-        tell application "Microsoft Edge"
-            if not running then return "not-found"
-            repeat with w in windows
-                try
-                    if URL of active tab of w starts with \(originValue) then return "found"
-                end try
-            end repeat
-            return "not-found"
-        end tell
-        """
-        runAppleScript(source: source, expectedResult: "found", completion: completion)
-    }
-
-    private func navigateExistingEdgeWindow(
-        url: URL,
-        origin: URL,
-        completion: @escaping @Sendable (Bool) -> Void
-    ) {
-        let target = appleScriptLiteral(url.absoluteString)
-        let originValue = appleScriptLiteral(originPrefix(origin))
-        let source = """
-        tell application "Microsoft Edge"
-            repeat with w in windows
-                try
-                    if URL of active tab of w starts with \(originValue) then
-                        set URL of active tab of w to \(target)
-                        return "reused"
-                    end if
-                end try
-            end repeat
-            return "not-found"
-        end tell
-        """
-        runAppleScript(source: source, expectedResult: "reused", completion: completion)
-    }
-
-    private func runAppleScript(
-        source: String,
-        expectedResult: String,
-        completion: @escaping @Sendable (Bool) -> Void
-    ) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            var details: NSDictionary?
-            let result = NSAppleScript(source: source)?.executeAndReturnError(&details).stringValue
-            if let details {
-                CompanionLog.error("Edge automation failed: \(details)")
-            }
-            completion(result == expectedResult)
-        }
-    }
-
-    private func focusPWA(
-        at pwa: URL,
-        completion: @escaping @Sendable (Result<Void, Error>) -> Void
-    ) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        configuration.createsNewApplicationInstance = false
-        NSWorkspace.shared.openApplication(at: pwa, configuration: configuration) { _, error in
-            if let error { completion(.failure(error)) }
-            else { completion(.success(())) }
-        }
-    }
-
     private func launchPWA(
         at pwa: URL,
         url: URL,
@@ -158,16 +66,6 @@ struct SessionOpener {
                 completion(.success("Edge HAPI PWA 窗口"))
             }
         }
-    }
-
-    private func appleScriptLiteral(_ value: String) -> String {
-        let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
-    }
-
-    private func originPrefix(_ origin: URL) -> String {
-        origin.absoluteString.hasSuffix("/") ? origin.absoluteString : origin.absoluteString + "/"
     }
 
     private func openEdgeFallback(
