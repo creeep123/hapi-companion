@@ -18,12 +18,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private(set) var model: CompanionModel?
     private(set) var statusItem: NSStatusItem?
     private(set) var settingsWindow: NSWindow?
+    private var instanceGuard: SingleInstanceGuard?
     private var pendingReopen: DispatchWorkItem?
     private var suppressSettingsUntil = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // App-hosted XCTest must never pair, touch Keychain, register a login item or open SSE.
         guard !CompanionRuntime.isTesting else { return }
+        switch SingleInstanceGuard.claimDefault() {
+        case .acquired(let guardHandle):
+            instanceGuard = guardHandle
+        case .alreadyRunning:
+            CompanionLog.info("another Companion instance is already running; exiting duplicate")
+            NSApp.terminate(nil)
+            return
+        case .unavailable(let error):
+            // A filesystem problem must remain visible without disabling notifications entirely.
+            CompanionLog.error("single-instance lock unavailable: \(error.localizedDescription)")
+        }
         let preview = CompanionRuntime.isPreview
         let defaults = preview ? UserDefaults(suiteName: "io.github.creeep123.hapicompanion.preview")! : .standard
         let model = CompanionModel(defaults: defaults, preview: preview)
