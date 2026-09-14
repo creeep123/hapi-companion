@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private(set) var model: CompanionModel?
     private(set) var statusItem: NSStatusItem?
     private(set) var settingsWindow: NSWindow?
+    private var pendingReopen: DispatchWorkItem?
+    private var suppressSettingsUntil = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // App-hosted XCTest must never pair, touch Keychain, register a login item or open SSE.
@@ -91,7 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showSettings()
+        guard Date() >= suppressSettingsUntil else { return false }
+        pendingReopen?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showSettings() }
+        pendingReopen = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
         return false
     }
 
@@ -121,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         guard let sessionId = response.notification.request.content.userInfo["sessionId"] as? String else { return }
         let url = response.notification.request.content.userInfo["url"] as? String ?? ""
-        await MainActor.run { self.model?.openEventURL(url, fallbackSessionId: sessionId) }
+        await MainActor.run {
+            self.suppressSettingsUntil = Date().addingTimeInterval(1)
+            self.pendingReopen?.cancel()
+            self.pendingReopen = nil
+            self.settingsWindow?.orderOut(nil)
+            self.model?.openEventURL(url, fallbackSessionId: sessionId)
+        }
     }
 }

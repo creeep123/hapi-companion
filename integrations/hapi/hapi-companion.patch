@@ -1686,8 +1686,120 @@ index 3444b88c..2a751025 100644
      })
  
      const configuration = getConfiguration()
+diff --git a/web/src/lib/pwaLaunchHandler.test.ts b/web/src/lib/pwaLaunchHandler.test.ts
+new file mode 100644
+index 00000000..9457ac04
+--- /dev/null
++++ b/web/src/lib/pwaLaunchHandler.test.ts
+@@ -0,0 +1,37 @@
++import { afterEach, describe, expect, it, vi } from 'vitest'
++import { installPwaLaunchHandler, sessionIdFromPwaLaunch } from './pwaLaunchHandler'
++
++const first = '4156cf37-2e0b-47cc-8c3d-e78e4842d326'
++const second = '9dab52cd-1381-4952-bd0d-96edddba9b6d'
++
++afterEach(() => {
++    delete window.launchQueue
++    window.history.replaceState({}, '', '/')
++})
++
++describe('PWA launch routing', () => {
++    it('accepts only exact same-origin session URLs', () => {
++        expect(sessionIdFromPwaLaunch(`${location.origin}/sessions/${first}`)).toBe(first)
++        expect(sessionIdFromPwaLaunch(`https://example.invalid/sessions/${first}`)).toBeNull()
++        expect(sessionIdFromPwaLaunch(`${location.origin}/sessions/${first}/messages`)).toBeNull()
++        expect(sessionIdFromPwaLaunch(`${location.origin}/sessions/${first}?next=1`)).toBeNull()
++        expect(sessionIdFromPwaLaunch(`${location.origin}/sessions/not-a-uuid`)).toBeNull()
++    })
++
++    it('routes a launch inside the existing SPA and ignores the current session', () => {
++        let consume: ((params: { targetURL?: string }) => void) | undefined
++        window.launchQueue = { setConsumer: consumer => { consume = consumer } }
++        const navigate = vi.fn()
++        expect(installPwaLaunchHandler({ navigate })).toBe(true)
++
++        window.history.replaceState({}, '', `/sessions/${first}`)
++        consume?.({ targetURL: `${location.origin}/sessions/${first}` })
++        expect(navigate).not.toHaveBeenCalled()
++
++        consume?.({ targetURL: `${location.origin}/sessions/${second}` })
++        expect(navigate).toHaveBeenCalledWith({
++            to: '/sessions/$sessionId',
++            params: { sessionId: second },
++        })
++    })
++})
+diff --git a/web/src/lib/pwaLaunchHandler.ts b/web/src/lib/pwaLaunchHandler.ts
+new file mode 100644
+index 00000000..0944d052
+--- /dev/null
++++ b/web/src/lib/pwaLaunchHandler.ts
+@@ -0,0 +1,43 @@
++type LaunchParams = { targetURL?: string }
++type LaunchQueue = { setConsumer(consumer: (params: LaunchParams) => void): void }
++type SessionRouter = {
++    navigate(options: { to: '/sessions/$sessionId'; params: { sessionId: string } }): unknown
++}
++
++declare global {
++    interface Window {
++        launchQueue?: LaunchQueue
++    }
++}
++
++const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
++
++export function sessionIdFromPwaLaunch(targetURL: string, origin = window.location.origin): string | null {
++    let target: URL
++    try {
++        target = new URL(targetURL)
++    } catch {
++        return null
++    }
++    if (target.origin !== origin || target.search || target.hash) return null
++    const match = target.pathname.match(/^\/sessions\/([^/]+)$/)
++    if (!match) return null
++    let sessionId: string
++    try {
++        sessionId = decodeURIComponent(match[1])
++    } catch {
++        return null
++    }
++    return SESSION_ID.test(sessionId) ? sessionId : null
++}
++
++export function installPwaLaunchHandler(router: SessionRouter): boolean {
++    if (!window.launchQueue) return false
++    window.launchQueue.setConsumer(({ targetURL }) => {
++        if (!targetURL) return
++        const sessionId = sessionIdFromPwaLaunch(targetURL)
++        if (!sessionId || window.location.pathname === `/sessions/${sessionId}`) return
++        void router.navigate({ to: '/sessions/$sessionId', params: { sessionId } })
++    })
++    return true
++}
+diff --git a/web/src/main.tsx b/web/src/main.tsx
+index 6c5aee2e..1ace6044 100644
+--- a/web/src/main.tsx
++++ b/web/src/main.tsx
+@@ -11,6 +11,7 @@ import { createAppRouter } from './router'
+ import { I18nProvider } from './lib/i18n-context'
+ import { restoreSpaRedirect } from './lib/spaRedirect'
+ import { installScrollRestorationGuard } from './lib/scrollStorageGuard'
++import { installPwaLaunchHandler } from './lib/pwaLaunchHandler'
+ 
+ function getStartParam(): string | null {
+     const query = new URLSearchParams(window.location.search)
+@@ -55,6 +56,7 @@ async function bootstrap() {
+         ? createMemoryHistory({ initialEntries: [getInitialPath()] })
+         : undefined
+     const router = createAppRouter(history)
++    if (!isTelegram) installPwaLaunchHandler(router)
+ 
+     ReactDOM.createRoot(document.getElementById('root')!).render(
+         <React.StrictMode>
 diff --git a/web/vite.config.ts b/web/vite.config.ts
-index cb877c03..0235d09e 100644
+index cb877c03..77140294 100644
 --- a/web/vite.config.ts
 +++ b/web/vite.config.ts
 @@ -102,6 +102,11 @@ export default defineConfig({
@@ -1697,7 +1809,7 @@ index cb877c03..0235d09e 100644
 +                // Reuse the most recently active installed-PWA window when the
 +                // OS launches HAPI with a deep link (for example, from the macOS Companion).
 +                launch_handler: {
-+                    client_mode: 'navigate-existing'
++                    client_mode: ['focus-existing', 'navigate-existing']
 +                },
                  icons: [
                      {

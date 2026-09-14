@@ -13,7 +13,9 @@ struct ReminderSoundPreset: Identifiable {
         .init(id: "moonbeam", name: "月光 · Moonbeam · 1.9 秒", resource: "SoundMoonbeam", ext: "wav"),
         .init(id: "tejat", name: "双音轻铃 · Tejat · 1.2 秒", resource: "SoundTejat", ext: "wav"),
         .init(id: "capella", name: "明亮和弦 · Capella · 1.4 秒", resource: "SoundCapella", ext: "wav"),
-        .init(id: "cetialpha", name: "电子回响 · Ceti Alpha · 2.9 秒", resource: "SoundCetiAlpha", ext: "wav")
+        .init(id: "cetialpha", name: "电子回响 · Ceti Alpha · 2.9 秒", resource: "SoundCetiAlpha", ext: "wav"),
+        .init(id: "pixel-coin-clear", name: "像素金币 · 清脆 · 0.2 秒", resource: "SoundPixelCoinClear", ext: "wav"),
+        .init(id: "pixel-coin-double", name: "像素金币 · 双音 · 0.3 秒", resource: "SoundPixelCoinDouble", ext: "wav")
     ]
 }
 

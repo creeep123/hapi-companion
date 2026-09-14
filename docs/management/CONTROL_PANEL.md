@@ -1,9 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-14
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.3.1 is publicly released and installed on this Mac. Free new-version reminders and in-app installation passed real download/relaunch, signed-feed/archive checks, Hub reconnection and retained settings; 47 tests pass. [Release evidence and rollback](../deployments/V0_3_1_MAC_UPDATES.md). No Hub/updater deployment.
+**Current posture:** v0.4.1 is the installed Mac/production Relay candidate. V0.5 is in implementation: two accepted pixel coin sounds plus smoother exact-session notification clicks. Its HAPI web patch will require a new updater pin and production Hub/web acceptance before release.
+
+## Active release — V0.5 sounds and smooth PWA navigation
+
+The user selected two short pixel coin cues for the built-in sound list. Notification clicks will hand the exact URL to Edge once; the HAPI PWA will focus its existing window and switch sessions through its own router, avoiding the current settings flash and full document reload on supported Edge versions. The fallback still opens the exact session on older browsers. No Hub API, schema, SSE/ACK or Relay contract changes. Scope and gates: [V0.5 specification](../specs/V0_5_SOUNDS_AND_NAVIGATION.md); architecture: [ADR 0006](../adr/0006-pwa-launch-routing.md).
 
 ## Deployment candidate — V0.4 Android exact-session notifications
 

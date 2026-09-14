@@ -32,11 +32,12 @@ final class ReminderSoundsTests: XCTestCase {
     }
 
     func testAllBundledPresetsDecodeAndAreShort() throws {
-        XCTAssertEqual(Set(ReminderSoundPreset.all.map(\.id)).count, 6)
+        XCTAssertEqual(Set(ReminderSoundPreset.all.map(\.id)).count, 8)
         for preset in ReminderSoundPreset.all {
             let url = try XCTUnwrap(bundle.url(forResource: preset.resource, withExtension: preset.ext))
             let sound = try XCTUnwrap(NSSound(contentsOf: url, byReference: false))
-            XCTAssertGreaterThanOrEqual(sound.duration, 1)
+            let minimum = preset.id.hasPrefix("pixel-coin-") ? 0.2 : 1.0
+            XCTAssertGreaterThanOrEqual(sound.duration, minimum)
             XCTAssertLessThanOrEqual(sound.duration, 3)
         }
     }
