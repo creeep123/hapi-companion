@@ -1,6 +1,6 @@
 # V0.5.1 single-instance hotfix
 
-Status: implementation in progress. User reported and authorized the fix on 2026-09-14.
+Status: released and installed on 2026-09-14.
 
 ## Problem
 

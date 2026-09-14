@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-14
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.4.1 is the installed Mac/production Relay candidate. V0.5 is in implementation: two accepted pixel coin sounds plus smoother exact-session notification clicks. Its HAPI web patch will require a new updater pin and production Hub/web acceptance before release.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. It contains the accepted pixel coin sounds, smoother exact-session launch path and the single-instance restart hotfix. The signed Sparkle update/relaunch and duplicate-process runtime check passed. The matching Hub/web rollout is scheduled behind the safe updater's night-time idle gate.
 
-## Active hotfix — V0.5.1 single instance
+## Released hotfix — V0.5.1 single instance
 
-After a restart, the installed login-item app and an Xcode Debug copy were both running and produced two menu-bar icons. V0.5.1 adds a per-user lifetime lock before any UI, Keychain or network startup, so a second copy exits immediately even when launched from another path. Scope and acceptance: [V0.5.1 specification](../specs/V0_5_1_SINGLE_INSTANCE.md).
+After a restart, the installed login-item app and an Xcode Debug copy were both running and produced two menu-bar icons. V0.5.1 adds a per-user lifetime lock before any UI, Keychain or network startup, so a second copy exits immediately even when launched from another path. The public signed update, retained settings and real two-path launch check passed. [Release evidence](../deployments/V0_5_1_SINGLE_INSTANCE.md); scope: [V0.5.1 specification](../specs/V0_5_1_SINGLE_INSTANCE.md).
 
 ## Active release — V0.5 sounds and smooth PWA navigation
 
