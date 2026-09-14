@@ -6,6 +6,14 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>HAPI Companion</title>
         <item>
+            <title>0.5.1</title>
+            <pubDate>Mon, 14 Sep 2026 19:49:04 +0800</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://api.github.com/repos/creeep123/hapi-companion/releases/assets/563289809" length="3816251" type="application/octet-stream" sparkle:edSignature="XPaWHG3KA2eoIdIophOUMD+0p5QFUhqvhmA3OgAnECcio/2QdgO3B7RcoVccvlz2kxa1N2gI2j7pXQ3bi2xmCg=="/>
+        </item>
+        <item>
             <title>0.3.1</title>
             <pubDate>Thu, 10 Sep 2026 12:10:49 +0800</pubDate>
             <sparkle:version>6</sparkle:version>
@@ -24,6 +32,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: OST9H2kzJyrpMW+oDsjHJ9zeuWfBgNzmX3a2mzYyuX84cFOLPD6Wg4nYBVdOW8ZANnqS1LiA5Qc5hk3GXgm4CQ==
-length: 1666
+edSignature: +8BaiM0hDYoTrhotSyc377+vmksaGp4q43Igx7h9gopDxY02+QtQDLTe61KQukUqDRNBJfoD5YjMFKKD/OBSDw==
+length: 2267
 -->
