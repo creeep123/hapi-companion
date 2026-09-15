@@ -9,7 +9,7 @@ The native app depends on a device-scoped, durable notification transport that u
 - Baseline description: HAPI `v0.30.7`
 - Patch schema level: database schema v27
 - Ported for HAPI v0.30.7: 2026-09-15
-- Cumulative patch SHA-256: `f7492b0fb2614f0963c473007b1c3910eab80aa04bb2ab44dc96613fa8c5dd5b`
+- Cumulative patch SHA-256: `2e75aa3ce6eaf7d965639d48feff3f0dc7ff4352306b48a1c28de1a5d35f5757`
 
 Because HAPI evolves, treat this patch as a reviewed reference rather than a timeless installer.
 
@@ -84,6 +84,19 @@ Schema v27 reconciles two different databases that both reported v26: pristine H
 
 The port preserves upstream Android, iOS and Web notification channels. Companion remains one additional durable channel and does not claim the native-delivery gate used by those channels.
 
+### Linux shared Codex transport compatibility
+
+The HAPI v0.30.7 shared runtime originally selected WebSocket-over-Unix-socket transport on every non-Windows platform. Bun 1.3.13 on Linux can terminate that connection immediately even though Codex app-server is listening, preventing Runner webhook startup from completing.
+
+The cumulative patch now keeps Unix sockets on Darwin and selects authenticated loopback TCP on Linux and Windows. Both the direct control connection and gateway upstream use a fresh random capability token; the external gateway also persists its separate random token when its listener is TCP. No token value is logged. This changes neither the Companion HTTP contract nor schema v27.
+
+`runtimeTransport.test.ts` fixes the platform matrix and token/persistence conditions. `runtimeTransport.linux.integration.test.ts` is an opt-in Linux gate that launches the installed real Codex app-server, connects over authenticated loopback TCP and completes the initialize round trip. Run it in an isolated Linux candidate with:
+
+```bash
+HAPI_RUN_LINUX_CODEX_TRANSPORT_TESTS=1 bun run --cwd cli test -- \
+  src/codex/shared/runtimeTransport.linux.integration.test.ts
+```
+
 ## v0.2 verification evidence
 
 Validation used an isolated worktree at the baseline commit plus this cumulative patch; the reference source and running Hub were not modified. `bun install --frozen-lockfile` rejected the baseline lockfile under installed Bun, so `bun install` populated local dependencies. The incidental lockfile rewrite is excluded from the integration patch.
@@ -109,6 +122,19 @@ Validation used an isolated worktree at exact tag commit `0239edf38e2da653d662f3
 - Clean re-apply and `git diff --check`: passed. The built PWA manifest contains `focus-existing` followed by `navigate-existing`.
 - Companion doctor passed and 71 macOS client tests passed with no failures.
 - No production service was changed. The new patch remains ineligible for production until the updater owner updates its pin and completes Linux candidate/VM gates.
+
+## Linux transport hotfix verification evidence
+
+Validation extended the cumulative patch on the same exact v0.30.7 baseline.
+
+- Transport selection: 3 passed, covering Linux, Windows and Darwin. Linux/Windows require loopback TCP, an upstream token, a TCP gateway and persisted gateway token; Darwin retains Unix sockets without persisted token.
+- Installed Codex shared-runtime integration on Darwin: 4 passed, confirming the unchanged Unix path.
+- CLI: 2,805 passed / 8 skipped; Hub: 1,312 passed / 3 skipped; Shared: 320 passed; Relay: 118 passed.
+- Web: 3,182 passed / 1 failed with the same baseline-reproduced `markdown-a.test.tsx` StorageEvent failure recorded above.
+- Full typecheck and build passed.
+- Companion doctor and 71 macOS client tests passed; no client contract changed.
+- The new real Linux app-server gate is present but cannot run on the Darwin validation machine. The updater must run it with Codex CLI 0.154.0 or newer in the clean Linux candidate; a skipped test is not acceptance evidence.
+- No API contract or database migration changes. Binary rollback does not require a DB downgrade because schema remains v27; retain the current known-good binary and normal database backup. Production replacement remains updater-owned.
 
 ## Patch change and upgrade handoff
 
