@@ -88,8 +88,56 @@ index 00000000..8f743e49
 +        })
 +    }
 +}
+diff --git a/hub/src/notifications/inputRequestChannels.test.ts b/hub/src/notifications/inputRequestChannels.test.ts
+index 49944b20..1de6929e 100644
+--- a/hub/src/notifications/inputRequestChannels.test.ts
++++ b/hub/src/notifications/inputRequestChannels.test.ts
+@@ -12,6 +12,9 @@ import type { PushPayload } from '../push/pushService'
+ import { ServerChanChannel } from '../serverchan/channel'
+ import { createNotificationKeyboard, formatSessionNotification } from '../telegram/sessionView'
+ import { composeInputRequestNotification } from './inputRequest'
++import { CompanionNotificationBroker } from './companionNotificationBroker'
++import { CompanionNotificationChannel } from './companionNotificationChannel'
++import { NativeNotificationComposer } from './nativeNotificationComposer'
+ 
+ const session: Session = {
+     id: 'session-input', namespace: 'default', active: true,
+@@ -30,6 +33,33 @@ const session: Session = {
+ const expected = composeInputRequestNotification(session)!
+ 
+ describe('input-request notification channels', () => {
++    it('preserves the input-request contract in the Companion durable outbox', async () => {
++        const store = new Store(':memory:')
++        try {
++            const channel = new CompanionNotificationChannel(
++                new CompanionNotificationBroker(store),
++                new NativeNotificationComposer()
++            )
++            await channel.sendPermissionRequest(session)
++            const events = store.companionNotifications.listAfter(session.namespace, 0)
++            expect(events).toHaveLength(1)
++            expect(events[0].payload).toEqual(expect.objectContaining({
++                version: 1,
++                kind: 'input-request',
++                title: expected.title,
++                body: expected.body,
++                severity: expected.severity,
++                sessionId: session.id,
++                sessionName: session.metadata?.name,
++                url: expected.url,
++                requestId: 'request-input',
++                tag: expected.tag
++            }))
++        } finally {
++            store.close()
++        }
++    })
++
+     it.each(['ios', 'android'] as const)('preserves the summary, type and routing through encrypted %s delivery', async (platform) => {
+         const store = new Store(':memory:')
+         try {
 diff --git a/hub/src/notifications/nativeNotificationComposer.ts b/hub/src/notifications/nativeNotificationComposer.ts
-index 9d4d8ad5..b2e7ee97 100644
+index 3320b759..6f3ab24c 100644
 --- a/hub/src/notifications/nativeNotificationComposer.ts
 +++ b/hub/src/notifications/nativeNotificationComposer.ts
 @@ -1,5 +1,6 @@
@@ -99,16 +147,16 @@ index 9d4d8ad5..b2e7ee97 100644
  import { getAgentName, getSessionName } from './sessionInfo'
  import { formatToolArgumentsCompact, formatToolArgumentsDetailed } from './toolArgs'
  import { extractAssistantPlainText, extractNotifySummary, unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
-@@ -27,7 +28,7 @@ export type ComposedNativeNotification = {
+@@ -28,7 +29,7 @@ export type ComposedNativeNotification = {
      title: string
      body: string
      tag?: string
--    type: 'ready' | 'permission-request' | 'task-notification'
-+    type: 'ready' | 'permission-request' | 'task-notification' | 'session-completed'
+-    type: 'ready' | 'permission-request' | 'input-request' | 'task-notification'
++    type: 'ready' | 'permission-request' | 'input-request' | 'task-notification' | 'session-completed'
      sessionId: string
      sessionName: string
      url: string
-@@ -124,6 +125,20 @@ export class NativeNotificationComposer {
+@@ -127,6 +128,20 @@ export class NativeNotificationComposer {
          }
      }
  
@@ -484,10 +532,10 @@ index 00000000..b6d36035
 +    clear(): void { this.turns.clear() }
 +}
 diff --git a/hub/src/startHub.ts b/hub/src/startHub.ts
-index d5fd94cc..2ba6d01f 100644
+index 2a78d092..459448c9 100644
 --- a/hub/src/startHub.ts
 +++ b/hub/src/startHub.ts
-@@ -25,6 +25,9 @@ import { TunnelManager } from './tunnel'
+@@ -26,6 +26,9 @@ import { TunnelManager } from './tunnel'
  import { refreshRejectedRelayAuthKey, resolveRelayAuthKey } from './tunnel/relayAuth'
  import { waitForTunnelTlsReady } from './tunnel/tlsGate'
  import { ServerChanChannel } from './serverchan/channel'
@@ -497,7 +545,7 @@ index d5fd94cc..2ba6d01f 100644
  import QRCode from 'qrcode'
  import type { Server as BunServer } from 'bun'
  import type { WebSocketData } from '@socket.io/bun-engine'
-@@ -177,6 +180,7 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
+@@ -178,6 +181,7 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
      }
  
      const store = new Store(config.dbPath)
@@ -505,18 +553,19 @@ index d5fd94cc..2ba6d01f 100644
      const jwtSecret = await getOrCreateJwtSecret()
      const vapidKeys = await getOrCreateVapidKeys(config.dataDir)
      const vapidSubject = process.env.VAPID_SUBJECT ?? 'mailto:admin@hapi.run'
-@@ -223,6 +227,10 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
-         : null
+@@ -213,6 +217,11 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
  
+     const androidPushConfig = resolveAndroidPushConfig(config)
      const notificationChannels: NotificationChannel[] = []
 +    notificationChannels.push(new CompanionNotificationChannel(
 +        companionBroker,
 +        new NativeNotificationComposer(store)
 +    ))
- 
-     if (fcmConfig && fcmService) {
-         notificationChannels.push(new FcmNotificationChannel(fcmService, sseManager, visibilityTracker, store))
-@@ -290,7 +298,8 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
++
+     if (androidPushConfig.mode === 'fcm') {
+         const { fcm } = androidPushConfig
+         const sender = new FcmService(fcm.projectId, fcm.serviceAccount, store)
+@@ -287,7 +296,8 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
          socketEngine: socketServer.engine,
          corsOrigins,
          relayMode: relayFlag.enabled,
@@ -795,7 +844,7 @@ index 00000000..99b39977
 +    }
 +}
 diff --git a/hub/src/store/index.ts b/hub/src/store/index.ts
-index 5c12c5eb..3c992890 100644
+index 7e1e6cf0..e04bea4d 100644
 --- a/hub/src/store/index.ts
 +++ b/hub/src/store/index.ts
 @@ -13,6 +13,7 @@ import { SessionStore } from './sessionStore'
@@ -827,8 +876,8 @@ index 5c12c5eb..3c992890 100644
      WorkGraphValidationError
  } from './workGraph'
  
--const SCHEMA_VERSION: number = 25
-+const SCHEMA_VERSION: number = 26
+-const SCHEMA_VERSION: number = 26
++const SCHEMA_VERSION: number = 27
  const REQUIRED_TABLES = [
      'sessions',
      'machines',
@@ -859,15 +908,15 @@ index 5c12c5eb..3c992890 100644
      }
  
      /**
-@@ -347,6 +356,7 @@ export class Store {
-             22: () => this.migrateFromV22ToV23(),
+@@ -348,6 +357,7 @@ export class Store {
              23: () => this.migrateFromV23ToV24(),
              24: () => this.migrateFromV24ToV25(),
-+            25: () => this.migrateFromV25ToV26(),
+             25: () => this.migrateFromV25ToV26(),
++            26: () => this.migrateFromV26ToV27(),
          })
  
          if (currentVersion === 0) {
-@@ -591,6 +601,67 @@ export class Store {
+@@ -598,6 +608,35 @@ export class Store {
                  ON event_links(namespace, from_event_id);
              CREATE INDEX IF NOT EXISTS idx_event_links_namespace_to
                  ON event_links(namespace, to_event_id);
@@ -900,11 +949,28 @@ index 5c12c5eb..3c992890 100644
 +                ON companion_notification_outbox(namespace, seq);
 +            CREATE INDEX IF NOT EXISTS idx_companion_outbox_expires
 +                ON companion_notification_outbox(expires_at);
-+        `)
-+    }
-+
-+    private migrateFromV25ToV26(): void {
+         `)
+     }
+ 
+@@ -996,6 +1035,52 @@ export class Store {
+         `)
+     }
+ 
++    /**
++     * v26→v27 reconciles the two shipped v26 lineages:
++     * upstream v26 has the immediate-queue index, while Companion v26 has
++     * the durable device/outbox tables. Every statement is idempotent so
++     * either database shape converges without dropping notification state.
++     */
++    private migrateFromV26ToV27(): void {
 +        this.db.exec(`
++            CREATE INDEX IF NOT EXISTS idx_messages_immediate_queued
++                ON messages(session_id, seq)
++                WHERE invoked_at IS NULL
++                  AND local_id IS NOT NULL
++                  AND scheduled_at IS NULL
++                  AND delivery_state = 'queued';
++
 +            CREATE TABLE IF NOT EXISTS companion_devices (
 +                id TEXT PRIMARY KEY,
 +                installation_id TEXT NOT NULL,
@@ -920,6 +986,7 @@ index 5c12c5eb..3c992890 100644
 +                ON companion_devices(namespace);
 +            CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_devices_namespace_installation
 +                ON companion_devices(namespace, installation_id);
++
 +            CREATE TABLE IF NOT EXISTS companion_notification_outbox (
 +                seq INTEGER PRIMARY KEY AUTOINCREMENT,
 +                event_id TEXT NOT NULL UNIQUE,
@@ -932,19 +999,22 @@ index 5c12c5eb..3c992890 100644
 +                ON companion_notification_outbox(namespace, seq);
 +            CREATE INDEX IF NOT EXISTS idx_companion_outbox_expires
 +                ON companion_notification_outbox(expires_at);
-         `)
-     }
- 
++        `)
++    }
++
+     /**
+      * A2A Layer 1 / P1 (#1374) + P3 substrate: hub work-graph ledger tables.
+      * Namespace + principal_json required on every events row.
 diff --git a/hub/src/store/migration-v13.test.ts b/hub/src/store/migration-v13.test.ts
-index ec0ff42c..7c355f6e 100644
+index 7c355f6e..4101f540 100644
 --- a/hub/src/store/migration-v13.test.ts
 +++ b/hub/src/store/migration-v13.test.ts
 @@ -10,7 +10,7 @@ describe('Store V12/V13→V14 schema reconciliation', () => {
          const store = new Store(':memory:')
          expect(tableExists(store, 'message_epochs')).toBe(true)
          expect(tableExists(store, 'session_scratchlist')).toBe(true)
--        expect(getUserVersion(store)).toBe(25)
-+        expect(getUserVersion(store)).toBe(26)
+-        expect(getUserVersion(store)).toBe(26)
++        expect(getUserVersion(store)).toBe(27)
          store.close()
      })
  
@@ -952,8 +1022,8 @@ index ec0ff42c..7c355f6e 100644
              store = new Store(dbPath)
              expect(tableExists(store, 'message_epochs')).toBe(true)
              expect(tableExists(store, 'session_scratchlist')).toBe(true)
--            expect(getUserVersion(store)).toBe(25)
-+            expect(getUserVersion(store)).toBe(26)
+-            expect(getUserVersion(store)).toBe(26)
++            expect(getUserVersion(store)).toBe(27)
              expect(store.messages.getMessageEpoch('session-1')).toBe(0)
              expect(store.messages.getMessages('session-1')).toHaveLength(1)
          } finally {
@@ -961,21 +1031,21 @@ index ec0ff42c..7c355f6e 100644
              store = new Store(dbPath)
              expect(tableExists(store, 'message_epochs')).toBe(true)
              expect(tableExists(store, 'session_scratchlist')).toBe(true)
--            expect(getUserVersion(store)).toBe(25)
-+            expect(getUserVersion(store)).toBe(26)
+-            expect(getUserVersion(store)).toBe(26)
++            expect(getUserVersion(store)).toBe(27)
              expect(store.messages.getMessages('session-1')).toHaveLength(1)
          } finally {
              store?.close()
 diff --git a/hub/src/store/migration-v15.test.ts b/hub/src/store/migration-v15.test.ts
-index 57113fe4..f3bdf273 100644
+index f3bdf273..02b5c556 100644
 --- a/hub/src/store/migration-v15.test.ts
 +++ b/hub/src/store/migration-v15.test.ts
 @@ -19,7 +19,7 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
          expect(cols).toContain('attachments')
          expect(getColumns(store, 'usage_events')).toContain('last_input_tokens')
          expect(getColumns(store, 'usage_scan_state')).toContain('last_seq')
--        expect(getUserVersion(store)).toBe(25)
-+        expect(getUserVersion(store)).toBe(26)
+-        expect(getUserVersion(store)).toBe(26)
++        expect(getUserVersion(store)).toBe(27)
          store.close()
      })
  
@@ -983,8 +1053,8 @@ index 57113fe4..f3bdf273 100644
              expect(cols).toContain('attachments')
              expect(getColumns(store, 'usage_events')).toContain('last_input_tokens')
              expect(getColumns(store, 'usage_scan_state')).toContain('last_seq')
--            expect(getUserVersion(store)).toBe(25)
-+            expect(getUserVersion(store)).toBe(26)
+-            expect(getUserVersion(store)).toBe(26)
++            expect(getUserVersion(store)).toBe(27)
          } finally {
              store?.close()
              rmSync(dir, { recursive: true, force: true })
@@ -992,156 +1062,223 @@ index 57113fe4..f3bdf273 100644
              store2 = new Store(dbPath)
              const cols2 = getColumns(store2, 'session_scratchlist')
              expect(cols2).toEqual(cols1)
--            expect(getUserVersion(store2)).toBe(25)
-+            expect(getUserVersion(store2)).toBe(26)
+-            expect(getUserVersion(store2)).toBe(26)
++            expect(getUserVersion(store2)).toBe(27)
          } finally {
              store2?.close()
              store1?.close()
 diff --git a/hub/src/store/migration-v18.test.ts b/hub/src/store/migration-v18.test.ts
-index 3e6b4912..2c31127b 100644
+index 2c31127b..5c23e841 100644
 --- a/hub/src/store/migration-v18.test.ts
 +++ b/hub/src/store/migration-v18.test.ts
 @@ -38,7 +38,7 @@ describe('Store V18->V19 migration: usage scan state', () => {
              const usageRows = internalDb.prepare('SELECT COUNT(*) AS count FROM usage_events').get() as { count: number }
  
              expect(table?.name).toBe('usage_scan_state')
--            expect(version.user_version).toBe(25)
-+            expect(version.user_version).toBe(26)
+-            expect(version.user_version).toBe(26)
++            expect(version.user_version).toBe(27)
              expect(usageRows.count).toBe(0)
          } finally {
              store?.close()
 diff --git a/hub/src/store/migration-v19.test.ts b/hub/src/store/migration-v19.test.ts
-index ba3d802d..888b7455 100644
+index 888b7455..7a9b3d7a 100644
 --- a/hub/src/store/migration-v19.test.ts
 +++ b/hub/src/store/migration-v19.test.ts
 @@ -37,7 +37,7 @@ describe('Store V19->current migration: usage re-index', () => {
              const scanRows = internalDb.prepare('SELECT COUNT(*) AS count FROM usage_scan_state').get() as { count: number }
              const usageRows = internalDb.prepare('SELECT COUNT(*) AS count FROM usage_events').get() as { count: number }
  
--            expect(version.user_version).toBe(25)
-+            expect(version.user_version).toBe(26)
+-            expect(version.user_version).toBe(26)
++            expect(version.user_version).toBe(27)
              expect(scanRows.count).toBe(0)
              expect(usageRows.count).toBe(0)
          } finally {
 diff --git a/hub/src/store/migration-v20.test.ts b/hub/src/store/migration-v20.test.ts
-index 2af4f259..fba1a455 100644
+index fba1a455..5f60d446 100644
 --- a/hub/src/store/migration-v20.test.ts
 +++ b/hub/src/store/migration-v20.test.ts
 @@ -43,7 +43,7 @@ describe('Store V20->V21 migration: usage semantics re-index', () => {
              store = new Store(dbPath)
              const internalDb = (store as unknown as { db: Database }).db
              const count = (table: string): number => (internalDb.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count
--            expect((internalDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(25)
-+            expect((internalDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(26)
+-            expect((internalDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(26)
++            expect((internalDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(27)
              expect(count('usage_events')).toBe(0)
              expect(count('usage_scan_state')).toBe(0)
              expect(store.messages.getMessages(session.id)).toHaveLength(1)
 diff --git a/hub/src/store/migration-v23.test.ts b/hub/src/store/migration-v23.test.ts
-index cd2733b3..191fa1cd 100644
+index 191fa1cd..93aa4dad 100644
 --- a/hub/src/store/migration-v23.test.ts
 +++ b/hub/src/store/migration-v23.test.ts
 @@ -13,7 +13,7 @@ afterEach(() => {
      }
  })
  
--describe('schema migration v22 to v25', () => {
-+describe('schema migration v22 to v26', () => {
+-describe('schema migration v22 to v26', () => {
++describe('schema migration v22 to 27', () => {
      it('adds events and event_links tables to a V22 database', () => {
          const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v23-'))
          tempDirs.push(dir)
-@@ -42,7 +42,7 @@ describe('schema migration v22 to v25', () => {
+@@ -42,7 +42,7 @@ describe('schema migration v22 to v26', () => {
          expect(links?.name).toBe('event_links')
          const columns = internalDb.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
          expect(columns.map((column) => column.name)).toContain('delivery_state')
--        expect(version.user_version).toBe(25)
-+        expect(version.user_version).toBe(26)
+-        expect(version.user_version).toBe(26)
++        expect(version.user_version).toBe(27)
          migrated.close()
      })
  })
 diff --git a/hub/src/store/migration-v24.test.ts b/hub/src/store/migration-v24.test.ts
-index 7dd95179..4e727880 100644
+index 4e727880..85bc6f10 100644
 --- a/hub/src/store/migration-v24.test.ts
 +++ b/hub/src/store/migration-v24.test.ts
 @@ -13,7 +13,7 @@ afterEach(() => {
      }
  })
  
--describe('schema migration v23 to v25', () => {
-+describe('schema migration v23 to v26', () => {
+-describe('schema migration v23 to v26', () => {
++describe('schema migration v23 to 27', () => {
      it('adds fcm_devices.push_key to a V23 database and keeps existing rows', () => {
          const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v24-'))
          tempDirs.push(dir)
-@@ -37,7 +37,7 @@ describe('schema migration v23 to v25', () => {
+@@ -37,7 +37,7 @@ describe('schema migration v23 to v26', () => {
          expect(columns.some((col) => col.name === 'push_key')).toBe(true)
          const messageColumns = internalDb.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
          expect(messageColumns.some((col) => col.name === 'delivery_state')).toBe(true)
--        expect(version.user_version).toBe(25)
-+        expect(version.user_version).toBe(26)
+-        expect(version.user_version).toBe(26)
++        expect(version.user_version).toBe(27)
  
          // Existing Android rows survive with a NULL push key.
          const devices = migrated.fcm.getDevicesByNamespace('default')
-@@ -74,7 +74,7 @@ describe('schema migration v23 to v25', () => {
+@@ -74,7 +74,7 @@ describe('schema migration v23 to v26', () => {
          const columns = internalDb.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
          const version = internalDb.prepare('PRAGMA user_version').get() as { user_version: number }
          expect(columns.some((col) => col.name === 'delivery_state')).toBe(true)
--        expect(version.user_version).toBe(25)
-+        expect(version.user_version).toBe(26)
+-        expect(version.user_version).toBe(26)
++        expect(version.user_version).toBe(27)
          migrated.close()
      })
  })
 diff --git a/hub/src/store/migration-v25.test.ts b/hub/src/store/migration-v25.test.ts
-new file mode 100644
-index 00000000..6e9e4fcf
---- /dev/null
+index c72bac7e..a4a4c362 100644
+--- a/hub/src/store/migration-v25.test.ts
 +++ b/hub/src/store/migration-v25.test.ts
-@@ -0,0 +1,45 @@
+@@ -13,7 +13,7 @@ afterEach(() => {
+     }
+ })
+ 
+-describe('schema migration v25 to v26', () => {
++describe('schema migration v25 to 27', () => {
+     it('adds an index used by immediate queued-message replay', () => {
+         const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v25-'))
+         tempDirs.push(dir)
+@@ -41,7 +41,7 @@ describe('schema migration v25 to v26', () => {
+             ORDER BY seq ASC
+         `).all('session-id') as Array<{ detail: string }>
+ 
+-        expect(version.user_version).toBe(26)
++        expect(version.user_version).toBe(27)
+         expect(plan.some((row) => row.detail.includes('idx_messages_immediate_queued'))).toBe(true)
+         migrated.close()
+     })
+diff --git a/hub/src/store/migration-v26.test.ts b/hub/src/store/migration-v26.test.ts
+new file mode 100644
+index 00000000..edefe982
+--- /dev/null
++++ b/hub/src/store/migration-v26.test.ts
+@@ -0,0 +1,90 @@
 +import { afterEach, describe, expect, it } from 'bun:test'
 +import { Database } from 'bun:sqlite'
 +import { mkdtempSync, rmSync } from 'node:fs'
-+import { join } from 'node:path'
 +import { tmpdir } from 'node:os'
++import { join } from 'node:path'
 +import { Store } from './index'
 +
-+const dirs: string[] = []
++const tempDirs: string[] = []
++
 +afterEach(() => {
-+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
++    for (const dir of tempDirs.splice(0)) {
++        rmSync(dir, { recursive: true, force: true })
++    }
 +})
 +
-+describe('schema migration v25 to v26', () => {
-+    it('adds durable companion device and notification tables', () => {
-+        const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v25-'))
-+        dirs.push(dir)
-+        const path = join(dir, 'hapi.db')
-+        const initial = new Store(path)
-+        initial.close()
++function createPath(): string {
++    const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v26-'))
++    tempDirs.push(dir)
++    return join(dir, 'hapi.db')
++}
 +
-+        const legacy = new Database(path)
-+        legacy.exec(`
++function tableNames(db: Database): string[] {
++    return (db.prepare(`
++        SELECT name FROM sqlite_master
++        WHERE type = 'table' AND name LIKE 'companion_%'
++        ORDER BY name
++    `).all() as Array<{ name: string }>).map((row) => row.name)
++}
++
++function hasImmediateQueueIndex(db: Database): boolean {
++    const row = db.prepare(`
++        SELECT 1 AS present FROM sqlite_master
++        WHERE type = 'index' AND name = 'idx_messages_immediate_queued'
++    `).get() as { present: number } | null
++    return row?.present === 1
++}
++
++describe('schema migration v26 to v27', () => {
++    it('adds Companion tables to an upstream v26 database', () => {
++        const path = createPath()
++        new Store(path).close()
++
++        const upstream = new Database(path)
++        upstream.exec(`
 +            DROP TABLE companion_notification_outbox;
 +            DROP TABLE companion_devices;
-+            PRAGMA user_version = 25;
++            PRAGMA user_version = 26;
 +        `)
-+        legacy.close()
++        expect(hasImmediateQueueIndex(upstream)).toBe(true)
++        upstream.close()
 +
-+        const migrated = new Store(path)
-+        const internal = new Database(path, { readonly: true })
-+        const version = internal.prepare('PRAGMA user_version').get() as { user_version: number }
-+        const tables = internal.prepare(`
-+            SELECT name FROM sqlite_master
-+            WHERE type = 'table' AND name LIKE 'companion_%'
-+            ORDER BY name
-+        `).all() as Array<{ name: string }>
-+        expect(version.user_version).toBe(26)
-+        expect(tables.map((row) => row.name)).toEqual([
-+            'companion_devices',
-+            'companion_notification_outbox'
-+        ])
-+        internal.close()
++        new Store(path).close()
++        const migrated = new Database(path, { readonly: true })
++        expect((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(27)
++        expect(tableNames(migrated)).toEqual(['companion_devices', 'companion_notification_outbox'])
++        expect(hasImmediateQueueIndex(migrated)).toBe(true)
++        migrated.close()
++    })
++
++    it('adds the upstream index and preserves Companion state from Companion v26', () => {
++        const path = createPath()
++        new Store(path).close()
++
++        const companion = new Database(path)
++        companion.exec(`
++            DROP INDEX idx_messages_immediate_queued;
++            INSERT INTO companion_devices (
++                id, installation_id, namespace, name, token_hash,
++                created_at, updated_at, last_ack_seq, enabled
++            ) VALUES ('device-1', 'install-1', 'default', 'Mac', 'hash', 1, 2, 7, 1);
++            INSERT INTO companion_notification_outbox (
++                event_id, namespace, payload_json, created_at, expires_at
++            ) VALUES ('event-1', 'default', '{}', 1, 9999999999999);
++            PRAGMA user_version = 26;
++        `)
++        companion.close()
++
++        new Store(path).close()
++        const migrated = new Database(path, { readonly: true })
++        expect((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(27)
++        expect(hasImmediateQueueIndex(migrated)).toBe(true)
++        expect((migrated.prepare(`
++            SELECT last_ack_seq FROM companion_devices WHERE id = 'device-1'
++        `).get() as { last_ack_seq: number }).last_ack_seq).toBe(7)
++        expect((migrated.prepare(`
++            SELECT COUNT(*) AS count FROM companion_notification_outbox WHERE event_id = 'event-1'
++        `).get() as { count: number }).count).toBe(1)
 +        migrated.close()
 +    })
 +})
 diff --git a/hub/src/store/types.ts b/hub/src/store/types.ts
-index d22773b8..7a4c9a32 100644
+index 5a44d7ef..1484e45d 100644
 --- a/hub/src/store/types.ts
 +++ b/hub/src/store/types.ts
 @@ -89,6 +89,42 @@ export type StoredFcmDevice = {
@@ -1164,7 +1301,7 @@ index d22773b8..7a4c9a32 100644
 +    version: 1
 +    eventId: string
 +    createdAt: number
-+    kind: 'ready' | 'permission-request' | 'task-notification' | 'session-completed'
++    kind: 'ready' | 'permission-request' | 'input-request' | 'task-notification' | 'session-completed'
 +    title: string
 +    body: string
 +    severity: 'info' | 'success' | 'warning' | 'error'
@@ -1799,10 +1936,10 @@ index 6c5aee2e..1ace6044 100644
      ReactDOM.createRoot(document.getElementById('root')!).render(
          <React.StrictMode>
 diff --git a/web/vite.config.ts b/web/vite.config.ts
-index cb877c03..77140294 100644
+index 2ce44bf9..c942ad72 100644
 --- a/web/vite.config.ts
 +++ b/web/vite.config.ts
-@@ -102,6 +102,11 @@ export default defineConfig({
+@@ -130,6 +130,11 @@ export default defineConfig({
                  orientation: 'portrait',
                  scope: base,
                  start_url: base,

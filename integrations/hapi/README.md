@@ -1,15 +1,15 @@
 # HAPI Hub integration
 
-The native app depends on a device-scoped, durable notification transport that upstream HAPI 0.29.0 does not currently expose. `hapi-companion.patch` contains the implementation used and tested by this project.
+The native app depends on a device-scoped, durable notification transport that upstream HAPI does not currently expose. `hapi-companion.patch` contains the implementation used and tested by this project.
 
 ## Baseline
 
 - Upstream: `https://github.com/tiann/hapi.git`
-- Baseline commit: `d3d4fd1706564782e9a58b917df4e0677f65051f`
-- Baseline description: HAPI `v0.29.0-2-gd3d4fd17`
-- Patch schema level: database schema v26
-- Updated for Companion v0.2: 2026-09-08
-- Cumulative patch SHA-256: `399b6afc8e5ec1b6ad2a32152b3008905f697c42d68ca2325b4489e1ae60b0cf`
+- Baseline commit: `0239edf38e2da653d662f31039e24ccea04c7837`
+- Baseline description: HAPI `v0.30.7`
+- Patch schema level: database schema v27
+- Ported for HAPI v0.30.7: 2026-09-15
+- Cumulative patch SHA-256: `f7492b0fb2614f0963c473007b1c3910eab80aa04bb2ab44dc96613fa8c5dd5b`
 
 Because HAPI evolves, treat this patch as a reviewed reference rather than a timeless installer.
 
@@ -18,7 +18,7 @@ Because HAPI evolves, treat this patch as a reviewed reference rather than a tim
 ```bash
 git clone https://github.com/tiann/hapi.git
 cd hapi
-git checkout d3d4fd1706564782e9a58b917df4e0677f65051f
+git checkout 0239edf38e2da653d662f31039e24ccea04c7837
 git apply --check /path/to/hapi-companion/integrations/hapi/hapi-companion.patch
 git apply /path/to/hapi-companion/integrations/hapi/hapi-companion.patch
 bun install
@@ -76,6 +76,14 @@ The namespace comes solely from the authenticated device; a caller-supplied name
 
 Notification payload `version: 1` gains optional `durationMs`, a nonnegative safe integer. It measures the current foreground turn, using lifecycle-observed `activeTurnStartedAt`. New turn identities reset elapsed time even if thinking remains true. Completion freezes the value before any asynchronous channel dispatch; ended-state clearing and durable replay retain that value. Heartbeat timestamps, conversation age and client delivery time are never substituted. Unknown starts after restart remain absent. Permission events and unassociated background `task-notification` events omit duration; foreground `ready` events (including composed structured agent summaries) and generic `session-completed` events can carry it. No schema migration is added by v0.2; v0.1's schema v26 is unchanged.
 
+## HAPI v0.30.7 compatibility changes
+
+The event envelope remains contract version 1. Its `kind` vocabulary adds `input-request`, matching HAPI v0.30.7's distinction between a user question and a tool approval. This is additive; existing clients already decode `kind` as a string and continue to receive the title, summary, request ID and exact-session URL.
+
+Schema v27 reconciles two different databases that both reported v26: pristine HAPI v0.30.7 contains the immediate-message queue index, while the prior Companion-patched line contains the Companion device/outbox tables. The idempotent v26→v27 migration ensures both sets exist and preserves device ACK cursors and queued events. Rollback must restore the pre-upgrade database backup with the prior binary; an older v26 binary must not be pointed at a v27 database.
+
+The port preserves upstream Android, iOS and Web notification channels. Companion remains one additional durable channel and does not claim the native-delivery gate used by those channels.
+
 ## v0.2 verification evidence
 
 Validation used an isolated worktree at the baseline commit plus this cumulative patch; the reference source and running Hub were not modified. `bun install --frozen-lockfile` rejected the baseline lockfile under installed Bun, so `bun install` populated local dependencies. The incidental lockfile rewrite is excluded from the integration patch.
@@ -89,6 +97,18 @@ Validation used an isolated worktree at the baseline commit plus this cumulative
 - `git apply --cached --check` against an isolated index loaded from clean baseline: passed. `git diff --check`: passed.
 
 Evidence logs on the validation machine: `/tmp/hapi-companion-v02-hapi-{tests,typecheck,build}.log`, `/tmp/hapi-companion-v02-hub-full.log`, `/tmp/hapi-companion-v02-baseline-web-test.log`, `/tmp/hapi-companion-v02-web-compatible-node.log`, `/tmp/hapi-companion-v02-{shared,relay}.log`. Production endpoint availability, pairing and real macOS delivery still require the approved Hub deployment and device acceptance; this patch has not been deployed.
+
+## HAPI v0.30.7 port verification evidence
+
+Validation used an isolated worktree at exact tag commit `0239edf38e2da653d662f31039e24ccea04c7837`. `bun install --frozen-lockfile` completed, and `bun.lock` plus all package manifests remained byte-identical.
+
+- Hub: 1,312 passed / 3 skipped; CLI: 2,802 passed / 7 skipped; Shared: 320 passed; Relay: 118 passed.
+- Web: 3,182 passed / 1 failed. The sole `markdown-a.test.tsx` StorageEvent failure reproduces unchanged on the clean v0.30.7 baseline (77 passed / 1 failed in that file), so it is a baseline/runtime test-environment issue.
+- Full `bun run typecheck` and `bun run build`: passed.
+- Focused v26→v27 dual-lineage migration and input-request channel checks: 11 passed. The migration preserves the prior Companion ACK cursor and queued event while adding the upstream index.
+- Clean re-apply and `git diff --check`: passed. The built PWA manifest contains `focus-existing` followed by `navigate-existing`.
+- Companion doctor passed and 71 macOS client tests passed with no failures.
+- No production service was changed. The new patch remains ineligible for production until the updater owner updates its pin and completes Linux candidate/VM gates.
 
 ## Patch change and upgrade handoff
 
