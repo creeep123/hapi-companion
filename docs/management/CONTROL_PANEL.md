@@ -1,6 +1,6 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.5.1 is publicly released and installed on this Mac. It contains the accepted pixel coin sounds, smoother exact-session launch path and the single-instance restart hotfix. The signed Sparkle update/relaunch and duplicate-process runtime check passed. The matching Hub/web rollout is scheduled behind the safe updater's night-time idle gate.
@@ -83,6 +83,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 ### Companion 与自动更新项目的长期协作规则
 
 - Companion 负责权威 Hub 补丁、接口约定和兼容性测试；独立 `hapi-safe-updater` 负责自动升级、部署和回滚。
+- 自动更新、版本 pin、候选验收、回滚和 VM 升级门禁的权威协调入口为 HAPI 会话 `854e7964-cd91-41a7-bfac-2a7e9e87787f`（“HAPI Safe Updater 管理”），工作目录 `/Users/mayuming/develop/hapi-safe-updater`。跨项目依赖应通过 HAPI peer 工具发给该会话并保留确认与验收证据；不得把会话路径当成本地文件，也不得把 updater 实现写进 Companion。
 - 修改补丁后，必须重新计算 SHA-256（用于锁定补丁内容的校验值），把新旧校验值、对应提交、目标 HAPI 版本、测试结果和回滚影响明确交给 updater 负责人；由对方更新 pin（升级器锁定的补丁版本）并重新验收。更新 updater 软件本身不等于已经更新补丁 pin。
 - 对方确认新 pin 和升级验收通过前，不能宣布跨项目交付完成或允许自动升级使用新补丁；未完成的同步必须保留为明确任务。单纯发出消息不算验收完成。
 - 用户于 2026-09-08 确认 updater 已在 `feat/companion-patched-hub-gates` 分支固化门禁，锁定补丁 `2a96be323c0d837793d32fd20fffc44efd6828e6a9263da5ebffcc5cf79e95bd`。该确认不代表分支已经合并或部署；实际运行状态由 updater 项目维护。
