@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-15
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. It contains the accepted pixel coin sounds, smoother exact-session launch path and the single-instance restart hotfix. The signed Sparkle update/relaunch and duplicate-process runtime check passed. The matching Hub/web rollout is scheduled behind the safe updater's night-time idle gate.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. The HAPI v0.30.7 Hub port is under compatibility acceptance and is **NO-GO for production** until the updater pins the immutable patch and completes its Linux candidate and VM gates. The cancelled 2026-09-16 04:00 target is not an approved deployment window.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -51,7 +51,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
 | macOS client | Green | v0.3.1 universal app; 47 tests pass; real in-app upgrade and current Mac runtime verified | Preserve URL-origin and delivery guarantees |
-| Hub transport | Yellow | Reviewed v26 outbox/SSE/ACK patch works on HAPI 0.29.0 | Rebase or upstream before claiming broad compatibility |
+| Hub transport | Yellow | v27 outbox/SSE/ACK patch is ported and locally tested on exact HAPI v0.30.7 commit | Obtain updater pin, Linux candidate, VM gates and later human notification acceptance |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
 | Distribution | Yellow | v0.3.1 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
@@ -96,7 +96,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 | HAPI CLI settings | Read locally for initial pairing | Never print or copy token values |
 | Keychain | Stores only device-scoped Companion credential | Delete only the scoped item during ad-hoc replacement |
 | Hub auth | Existing user JWT creates installation-isolated device token | Treat auth-route changes as security-sensitive |
-| Hub database | v26 durable outbox, device cursor, pruning | Backup before migration; rollback may require DB restore |
+| Hub database | v27 reconciles upstream-v26 and Companion-v26 lineages, retaining durable outbox and device cursor | Backup before migration; rollback requires restoring the pre-upgrade DB with the prior binary |
 | Network | One outbound HTTPS/SSE connection to configured Hub | No local listener and no polling loop |
 | Edge automation | Finds matching Hub origin and navigates that PWA window | Require macOS consent; do not inspect unrelated content |
 | Notification Center | Displays title/body/session link | Do not place secrets in event bodies |
@@ -110,8 +110,8 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | Recommended local path | `~/develop/hapi-companion` |
 | Canonical branch | `main` |
 | GitHub target | `creeep123/hapi-companion` |
-| HAPI integration baseline | `tiann/hapi@d3d4fd1706564782e9a58b917df4e0677f65051f` |
-| Compatible HAPI line | 0.29.0 reference baseline |
+| HAPI integration baseline | candidate `tiann/hapi@0239edf38e2da653d662f31039e24ccea04c7837` |
+| Compatible HAPI line | 0.30.7 candidate; production remains on its prior accepted build until updater gates pass |
 | Current local production app | `~/Applications/HAPI Companion.app` |
 | Public release artifact | `https://github.com/creeep123/hapi-companion/releases/tag/v0.3.1` |
 | Rollback for local app | reinstall the previously known-good app bundle |
@@ -126,7 +126,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
-| Future Hub compatibility | Backlog | patch is rebased to a tagged HAPI version or accepted upstream |
+| HAPI 0.30.7 compatibility | In progress | immutable patch is pinned by updater; clean Linux candidate, VM gates and rollback evidence pass |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
