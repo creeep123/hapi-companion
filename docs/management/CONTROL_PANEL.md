@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-15
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. The HAPI v0.30.7 Hub port is under compatibility acceptance and is **NO-GO for production** until the updater pins the immutable patch and completes its Linux candidate and VM gates. The cancelled 2026-09-16 04:00 target is not an approved deployment window.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. The VM was switched to patched HAPI v0.30.7 with schema v27 on 2026-09-15, but Linux Codex shared sessions fail during WebSocket-over-Unix-socket initialization. A minimal cumulative-patch hotfix keeps Darwin on Unix sockets and moves Linux to authenticated loopback TCP. Production stays on its current binary until Safe Updater accepts and deploys a new candidate.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -51,7 +51,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
 | macOS client | Green | v0.3.1 universal app; 47 tests pass; real in-app upgrade and current Mac runtime verified | Preserve URL-origin and delivery guarantees |
-| Hub transport | Yellow | v27 outbox/SSE/ACK patch is ported and locally tested on exact HAPI v0.30.7 commit | Obtain updater pin, Linux candidate, VM gates and later human notification acceptance |
+| Hub transport | Red | Companion endpoints pass on production v0.30.7, but all Linux Codex shared spawns time out; local hotfix tests pass on Darwin | Pin the hotfix, run the real Linux app-server gate and controlled VM recovery through Safe Updater |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
 | Distribution | Yellow | v0.3.1 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |

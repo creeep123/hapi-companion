@@ -1,3 +1,173 @@
+diff --git a/cli/src/codex/shared/runtime.ts b/cli/src/codex/shared/runtime.ts
+index 3a054ce2..7e93b911 100644
+--- a/cli/src/codex/shared/runtime.ts
++++ b/cli/src/codex/shared/runtime.ts
+@@ -38,6 +38,36 @@ async function freePort(): Promise<number> {
+     await new Promise<void>(resolve => server.close(() => resolve())); return address.port;
+ }
+ 
++export type SharedRuntimeTransport = {
++    upstream: string;
++    upstreamToken: string | undefined;
++    gatewayPath: string | undefined;
++    persistGatewayToken: boolean;
++};
++
++/** Bun's ws+unix client is not reliable on Linux; keep Unix sockets only on Darwin. */
++export async function selectSharedRuntimeTransport(
++    platform: NodeJS.Platform,
++    sockets: string,
++    allocatePort: () => Promise<number> = freePort,
++    createToken: () => string = () => randomBytes(32).toString('hex')
++): Promise<SharedRuntimeTransport> {
++    if (platform === 'darwin') {
++        return {
++            upstream: `unix://${join(sockets, 'engine.sock')}`,
++            upstreamToken: undefined,
++            gatewayPath: join(sockets, 'clients.sock'),
++            persistGatewayToken: false
++        };
++    }
++    return {
++        upstream: `ws://127.0.0.1:${await allocatePort()}`,
++        upstreamToken: createToken(),
++        gatewayPath: undefined,
++        persistGatewayToken: true
++    };
++}
++
+ /** One ordinary CLI execution owns one private engine, with concurrent frontends. */
+ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (ready: RuntimeReady) => void, abortSignal?: AbortSignal): Promise<void> {
+     abortSignal?.throwIfAborted();
+@@ -50,8 +80,8 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
+     // Unix sockaddr_un has a small path limit; don't nest sockets under CODEX_HOME.
+     const sockets = await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'hapi-cx-')); await chmod(sockets, 0o700);
+     const token = randomBytes(32).toString('hex');
+-    const upstream = process.platform === 'win32' ? `ws://127.0.0.1:${await freePort()}` : `unix://${join(sockets, 'engine.sock')}`;
+-    const upstreamToken = process.platform === 'win32' ? randomBytes(32).toString('hex') : undefined;
++    const transport = await selectSharedRuntimeTransport(process.platform, sockets);
++    const { upstream, upstreamToken } = transport;
+     const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: home };
+     // Every thread injects its own identity. A launch from another agent must not inherit that root's identity.
+     delete env.HAPI_SESSION_ID;
+@@ -320,7 +350,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
+         control.setTransportAbandonedHandler(reconnectControl);
+         await checkSharedCapabilities(control);
+         assertRunning();
+-        gateway = await startCodexGateway({ upstream, upstreamToken, path: process.platform === 'win32' ? undefined : join(sockets, 'clients.sock'), token,
++        gateway = await startCodexGateway({ upstream, upstreamToken, path: transport.gatewayPath, token,
+             hooks: { before, after, disconnected: connection => {
+                 for (const [key, reservation] of reservations) {
+                     if (!key.startsWith(`${connection}:`)) continue;
+@@ -335,7 +365,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
+                 throw new Error('Unknown runtime control');
+             }) } });
+         if (stopping) { await gateway.close(); assertRunning(); }
+-        runtime.endpoint = gateway.endpoint; if (process.platform === 'win32') runtime.token = token; await persist();
++        runtime.endpoint = gateway.endpoint; if (transport.persistGatewayToken) runtime.token = token; await persist();
+         let root: SharedCodexRoot;
+         if (options.resumeLast) {
+             const response = record(await control.request('thread/list', { limit: 1, sortKey: 'updated_at', sortDirection: 'desc',
+diff --git a/cli/src/codex/shared/runtimeTransport.linux.integration.test.ts b/cli/src/codex/shared/runtimeTransport.linux.integration.test.ts
+new file mode 100644
+index 00000000..0eeba89e
+--- /dev/null
++++ b/cli/src/codex/shared/runtimeTransport.linux.integration.test.ts
+@@ -0,0 +1,59 @@
++import { createHash } from 'node:crypto';
++import { spawn, type ChildProcess } from 'node:child_process';
++import { mkdtemp, rm } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { afterEach, describe, expect, it } from 'vitest';
++import { CodexAppServerClient } from '../codexAppServerClient';
++import { initializeSharedClient, resolveSharedCodex } from './launch';
++import { selectSharedRuntimeTransport } from './runtime';
++
++const enabled = process.platform === 'linux' && process.env.HAPI_RUN_LINUX_CODEX_TRANSPORT_TESTS === '1';
++
++describe.skipIf(!enabled)('Linux shared Codex transport', () => {
++    let server: ChildProcess | undefined;
++    let client: CodexAppServerClient | undefined;
++    let root: string | undefined;
++
++    afterEach(async () => {
++        await client?.disconnect().catch(() => {});
++        if (server && server.exitCode === null && server.signalCode === null) {
++            server.kill('SIGTERM');
++            await new Promise<void>(resolve => server!.once('exit', () => resolve()));
++        }
++        if (root) await rm(root, { recursive: true, force: true });
++    });
++
++    it('initializes the real app-server over authenticated loopback TCP', async () => {
++        root = await mkdtemp(join(tmpdir(), 'hapi-linux-codex-transport-'));
++        const transport = await selectSharedRuntimeTransport('linux', root);
++        expect(transport.upstream).toMatch(/^ws:\/\/127\.0\.0\.1:\d+$/);
++        expect(transport.upstreamToken).toMatch(/^[0-9a-f]{64}$/);
++
++        const command = resolveSharedCodex();
++        server = spawn(command.command, [...command.args, 'app-server', '--listen', transport.upstream,
++            '--ws-auth', 'capability-token', '--ws-token-sha256',
++            createHash('sha256').update(transport.upstreamToken!).digest('hex')], {
++            env: { ...process.env, CODEX_HOME: root }, stdio: ['ignore', 'ignore', 'pipe']
++        });
++
++        const deadline = Date.now() + 20_000;
++        let lastError: unknown;
++        while (Date.now() < deadline) {
++            client = new CodexAppServerClient({ endpoint: transport.upstream, token: transport.upstreamToken });
++            client.setServerRequestHandler(() => {});
++            try {
++                await initializeSharedClient(client);
++                lastError = undefined;
++                break;
++            } catch (error) {
++                lastError = error;
++                await client.disconnect().catch(() => {});
++                await new Promise(resolve => setTimeout(resolve, 100));
++            }
++        }
++        expect(lastError).toBeUndefined();
++        expect(client?.isInitialized()).toBe(true);
++        expect(server.exitCode).toBeNull();
++    }, 30_000);
++});
+diff --git a/cli/src/codex/shared/runtimeTransport.test.ts b/cli/src/codex/shared/runtimeTransport.test.ts
+new file mode 100644
+index 00000000..e104f1a9
+--- /dev/null
++++ b/cli/src/codex/shared/runtimeTransport.test.ts
+@@ -0,0 +1,29 @@
++import { describe, expect, it } from 'vitest';
++import { selectSharedRuntimeTransport } from './runtime';
++
++describe('shared Codex runtime transport selection', () => {
++    it.each(['linux', 'win32'] as const)('uses authenticated loopback TCP on %s', async platform => {
++        const values = ['upstream-secret'];
++        const transport = await selectSharedRuntimeTransport(platform, '/tmp/runtime', async () => 43123, () => values.shift()!);
++
++        expect(transport).toEqual({
++            upstream: 'ws://127.0.0.1:43123',
++            upstreamToken: 'upstream-secret',
++            gatewayPath: undefined,
++            persistGatewayToken: true
++        });
++    });
++
++    it('keeps unauthenticated Unix sockets on Darwin', async () => {
++        const transport = await selectSharedRuntimeTransport('darwin', '/tmp/runtime',
++            async () => { throw new Error('Darwin must not allocate a TCP port'); },
++            () => { throw new Error('Darwin must not allocate an upstream token'); });
++
++        expect(transport).toEqual({
++            upstream: 'unix:///tmp/runtime/engine.sock',
++            upstreamToken: undefined,
++            gatewayPath: '/tmp/runtime/clients.sock',
++            persistGatewayToken: false
++        });
++    });
++});
 diff --git a/hub/src/notifications/companionNotificationBroker.ts b/hub/src/notifications/companionNotificationBroker.ts
 new file mode 100644
 index 00000000..ba69d6ab
