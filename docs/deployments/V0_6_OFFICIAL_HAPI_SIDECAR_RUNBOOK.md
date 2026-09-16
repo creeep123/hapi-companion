@@ -56,7 +56,7 @@ After acceptance, record the immutable package hash, Sidecar database schema 2, 
 
 ## Candidate package
 
-Build with `./scripts/package-sidecar.sh bun-linux-x64`. The bundle contains the compiled executable, hardened unit, installer, API/runbook and a manifest binding the binary SHA-256, architecture, Sidecar schema 2, management API 2 and consumer contract 1. The installer verifies strict semver, artifact hash and architecture, installs without enabling a new service, and rolls an already-active Sidecar back to the previous immutable binary if health fails.
+Build with `./scripts/package-sidecar.sh bun-linux-x64`. The bundle contains the compiled executable, hardened unit, installer, API/runbook and a manifest binding the binary SHA-256, architecture, Sidecar schema 2, management API 2 and consumer contract 1. The operator selects the package matching the VM architecture; the installer verifies strict semver and the expected artifact hash, installs without enabling a new service, and rolls an already-active Sidecar back to the previous immutable binary if health fails.
 
 Run `./scripts/test-official-hapi-v0307.sh` before packaging. It refuses a dirty or wrong-baseline checkout and starts the clean official commit `0239edf38e2da653d662f31039e24ccea04c7837` in an isolated directory to test real authentication, catalog and SSE connected/resume behavior. The five semantic notification shapes remain covered by adapter/interpreter fixtures because generating all five requires real Runner activity; production shadow and real-device gates remain mandatory before cutover.
 

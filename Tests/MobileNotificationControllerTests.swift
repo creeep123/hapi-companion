@@ -152,6 +152,7 @@ private final class SidecarCredentialStub: @unchecked Sendable {
     func connected() { lock.withLock { reconnects += 1 } }
     func activate() { lock.withLock { activated = true } }
     func revoke() { lock.withLock { revoked = true } }
+    func seed(_ credential: CompanionCredential) { lock.withLock { value = credential } }
     func snapshot() -> (CompanionCredential?, Int, Bool, Bool) { lock.withLock { (value, reconnects, activated, revoked) } }
 }
 
@@ -194,6 +195,21 @@ final class MobileNotificationControllerTests: XCTestCase {
         controller.configure(hubURL: URL(string: "https://hapi.example")!, preferences: ReminderPreferences()); controller.endpointText = "https://relay.example"; controller.pairingCode = "once"; controller.privacyAccepted = true
         await controller.pairRelay()
         XCTAssertNil(sidecar.snapshot().0); XCTAssertTrue(sidecar.snapshot().3)
+    }
+    @MainActor
+    func testExplicitSidecarReconnectRevokesReplacedConsumerAfterSuccessfulSwitch() async throws {
+        let suite = "sidecar-reconnect." + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let stub = MobileControllerStub(), sidecar = SidecarCredentialStub(), publicHub = URL(string: "https://hapi.example")!, endpoint = URL(string: "https://relay.example")!
+        sidecar.seed(CompanionCredential(hubURL: endpoint, deviceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", token: String(repeating: "o", count: 48), publicHubURL: publicHub, transportVersion: 2))
+        var api = stub.api
+        api.createSidecarConsumer = { endpoint, _, _, _, publicOrigin in SidecarConsumerResponse(consumerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", token: String(repeating: "n", count: 48), publicHapiOrigin: publicOrigin, sidecarAPIOrigin: endpoint, contractVersion: 1) }
+        api.probeSidecarConsumer = { _, _, _ in }
+        api.revokeSidecarConsumer = { [sidecar] _, _, id in XCTAssertEqual(id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"); sidecar.revoke() }
+        let controller = MobileNotificationController(defaults: defaults, secrets: stub.secretAccess, api: api, sidecarCredentials: sidecar.access, sidecarReady: { sidecar.connected() }, registerDevice: { _, _ in throw MobileRelayError.invalidResponse }, deleteDevice: { _ in })
+        controller.configure(hubURL: publicHub, preferences: ReminderPreferences()); controller.endpointText = endpoint.absoluteString; controller.pairingCode = "once"; controller.privacyAccepted = true
+        await controller.pairRelay(); await controller.connectMacThroughRelay()
+        let snapshot = sidecar.snapshot(); XCTAssertEqual(snapshot.0?.deviceId, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"); XCTAssertTrue(snapshot.3)
     }
     func testPairAddTestActivatePauseResumeAndRemove() async throws {
         let suite = "MobileNotificationControllerTests." + UUID().uuidString

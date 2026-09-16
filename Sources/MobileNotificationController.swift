@@ -178,7 +178,8 @@ final class MobileNotificationController {
 
     private func pairMacConsumerIfSupported(endpoint: URL, managementToken: String, force: Bool = false) async throws -> Bool {
         guard let hubURL else { throw MobileRelayError.invalidResponse }
-        if !force, let existing = try? sidecarCredentials.load(hubURL), CompanionConfiguration.sameOrigin(existing.hubURL, endpoint) { return true }
+        let existing = try? sidecarCredentials.load(hubURL)
+        if !force, let existing, CompanionConfiguration.sameOrigin(existing.hubURL, endpoint) { return true }
         let installationId = defaults.string(forKey: "companionInstallationId") ?? UUID().uuidString
         defaults.set(installationId, forKey: "companionInstallationId")
         guard let response = try await api.createSidecarConsumer(endpoint, managementToken, installationId, Host.current().localizedName ?? "Mac", hubURL) else { return false }
@@ -192,6 +193,9 @@ final class MobileNotificationController {
         }
         try sidecarCredentials.save(CompanionCredential(hubURL: response.sidecarAPIOrigin, deviceId: response.consumerId, token: response.token, publicHubURL: response.publicHapiOrigin, transportVersion: 2))
         await sidecarReady()
+        if let existing, existing.deviceId != response.consumerId {
+            try? await api.revokeSidecarConsumer(endpoint, managementToken, existing.deviceId)
+        }
         return true
     }
 
