@@ -89,7 +89,8 @@ export class OfficialHapiClient {
   async messages(id: string, query: { afterAt?: number; afterSeq?: number; untilAt?: number; untilSeq?: number; epoch?: number; limit?: number } = {}, signal?: AbortSignal): Promise<OfficialMessagesPage> {
     const url = new URL(`/api/sessions/${encodeURIComponent(id)}/messages`, this.origin)
     for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, String(value))
-    const value = await this.request(`${url.pathname}${url.search}`, { signal }).then(r => r.json()).catch(() => null) as any
+    const response = await this.request(`${url.pathname}${url.search}`, { signal })
+    const value = await response.json().catch(() => null) as any
     if (!isObject(value) || !Array.isArray(value.messages) || !isObject(value.page) || !Number.isSafeInteger(value.page.epoch)) throw new OfficialHapiError('contract_invalid', true)
     for (const message of value.messages) if (!isObject(message) || !Number.isSafeInteger(message.seq) || !Number.isSafeInteger(message.createdAt) || !('content' in message)) throw new OfficialHapiError('contract_invalid', true)
     for (const field of ['nextAfterSeq', 'nextAfterAt', 'snapshotHeadSeq', 'snapshotHeadAt']) if (value.page[field] !== null && !Number.isSafeInteger(value.page[field])) throw new OfficialHapiError('contract_invalid', true)

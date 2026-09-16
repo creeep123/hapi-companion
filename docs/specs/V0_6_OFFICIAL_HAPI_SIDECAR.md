@@ -202,7 +202,7 @@ Normative source dedupe keys are:
 | input/permission | `namespaceHash/sessionId/requestId/kind` |
 | explicit completion | `namespaceHash/sessionId/officialEventId/session-completed` |
 
-The official SSE ID is persisted as the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful catalog replacement. Message position is the official tuple `(epoch, at, seq)`, never a synthetic scalar. After a message epoch reset, the adapter establishes a new watermark from `snapshotHead`; it never re-emits older latest messages. Source dedupe rows outlive notification retention for 45 days so a late replay cannot recreate an expired notification.
+The official SSE ID is persisted as the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful catalog replacement. Message position is the official tuple `(epoch, at, seq)`, never a synthetic scalar. The internal `(epoch, 0, 0)` marker means the session had no message watermark; after an upstream gap it is rebaselined with a latest-message request and is never sent as an incremental API cursor. After a message epoch reset, the adapter establishes a new watermark from `snapshotHead`; it never re-emits older latest messages. Source dedupe rows outlive notification retention for 45 days so a late replay cannot recreate an expired notification.
 
 The URL is always:
 
