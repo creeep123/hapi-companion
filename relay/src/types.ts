@@ -28,9 +28,24 @@ export type PersistedState = {
 }
 export type CompanionEvent = {
   version: 1; eventId: string; createdAt: number
-  kind: 'ready' | 'permission-request' | 'task-notification' | 'session-completed'
+  kind: 'ready' | 'permission-request' | 'input-request' | 'task-notification' | 'session-completed'
   title: string; body: string; severity: 'info' | 'success' | 'warning' | 'error'
   sessionId: string; sessionName: string; machineId?: string; url: string
   requestId?: string; tag?: string; durationMs?: number
 }
 export type StreamEvent = { seq: number; event: CompanionEvent }
+
+export type OfficialSessionSummary = {
+  id: string; title?: string; active?: boolean; thinking?: boolean
+  activeTurnStartedAt?: number | null; updatedAt?: number
+  pendingRequestsCount?: number; machineId?: string
+}
+export type OfficialRequest = { id: string; tool?: string; arguments?: unknown }
+export type OfficialSession = OfficialSessionSummary & {
+  agentState?: { requests?: Record<string, unknown> | OfficialRequest[] }
+}
+export type OfficialSyncEvent = {
+  type: string; sessionId?: string; reason?: string; data?: unknown
+  message?: unknown; namespace?: string
+}
+export type OfficialFrame = { id?: string; event: OfficialSyncEvent }
