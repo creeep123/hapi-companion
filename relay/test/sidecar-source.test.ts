@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { ConsumerBroker } from '../src/consumer-broker'
 import { EventInterpreter } from '../src/interpreter'
 import { SidecarSourceEngine } from '../src/sidecar-source'
-import { SidecarStore } from '../src/sidecar-store'
+import { SidecarStorageLimitError, SidecarStore } from '../src/sidecar-store'
 
 const stores: SidecarStore[] = []
 async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Promise<void> = async () => { throw new DOMException('aborted', 'AbortError') }, targetKinds: Array<'mac' | 'ntfy'> = ['mac', 'ntfy']) { const root = await mkdtemp(join(tmpdir(), 'source-')); const dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const store = new SidecarStore(join(dir, 'db')); stores.push(store); store.bindSource('https://hapi.example', 'ns'); const credential = store.createConsumer('mac'); const broker = new ConsumerBroker(store); return { store, credential, engine: new SidecarSourceEngine(store, new EventInterpreter('https://hapi.example', 'ns', () => 20_000), broker, client, sleep, () => {}, targetKinds) } }
@@ -28,6 +28,44 @@ describe('SidecarSourceEngine', () => {
     for (let i = 0; i < 30 && store.sourceCursor() !== 'event:harmless'; i++) await Bun.sleep(5)
     expect(store.sourceCursor()).toBe('event:harmless'); expect(catalogCalls).toBe(1); expect(detailCalls).toBe(1)
     expect(store.catalog().sessions[0]?.updatedAt).toBe(123); await engine.stop()
+  })
+  test('batches a burst of harmless cursor updates and flushes the tail on stop', async () => {
+    const client = {
+      catalog: async () => [{ id: 's1', title: 'One', active: true, updatedAt: 1 }],
+      session: async () => ({ id: 's1', title: 'One', active: true, thinking: false, updatedAt: 1 }),
+      messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        for (let index = 1; index <= 10; index++) yield { type: 'event', frame: { id: `event:${index}`, event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: index, thinking: false } } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, engine } = await setup(client)
+    const original = store.advanceCursor.bind(store); let commits = 0
+    store.advanceCursor = ((...args: Parameters<SidecarStore['advanceCursor']>) => { commits++; return original(...args) }) as SidecarStore['advanceCursor']
+    engine.start(); for (let i = 0; i < 30 && store.sourceCursor() !== 'event:1'; i++) await Bun.sleep(5)
+    await Bun.sleep(20); expect(commits).toBe(1); expect(store.sourceCursor()).toBe('event:1')
+    await engine.stop(); expect(commits).toBe(2); expect(store.sourceCursor()).toBe('event:10'); expect(store.catalog().sessions[0]?.updatedAt).toBe(10)
+  })
+  test('discards a failed pre-gap cursor batch before reconciliation', async () => {
+    let connections = 0
+    const client = {
+      catalog: async () => [{ id: 's1', title: 'One', active: true, updatedAt: 1 }],
+      session: async () => ({ id: 's1', title: 'One', active: true, thinking: false, updatedAt: 1 }),
+      messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        connections++
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        if (connections === 1) yield { type: 'event', frame: { id: 'obsolete', event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: 99, thinking: false } } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, engine } = await setup(client, async () => {})
+    const original = store.advanceCursor.bind(store)
+    store.advanceCursor = ((...args: Parameters<SidecarStore['advanceCursor']>) => { if (connections === 1) throw new SidecarStorageLimitError(); return original(...args) }) as SidecarStore['advanceCursor']
+    engine.start(); for (let i = 0; i < 50 && connections < 2; i++) await Bun.sleep(5)
+    expect(connections).toBe(2); await engine.stop()
+    expect(store.sourceCursor()).toBeUndefined(); expect(store.catalog().sessions[0]?.updatedAt).toBe(1)
   })
   test('gap snapshots before applying buffered live event and commits it', async () => {
     let release!: () => void; const hold = new Promise<void>(resolve => { release = resolve })
