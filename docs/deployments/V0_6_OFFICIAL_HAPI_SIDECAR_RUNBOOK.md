@@ -34,9 +34,9 @@ Start with `HAPI_SIDECAR_DELIVERY_MODE=shadow`. Shadow mode records semantic obs
 
 1. one official HAPI SSE connection and no polling;
 2. authentication, catalog and connected/resume state without credential exposure;
-3. real ready, input, permission, task and completion observations;
-4. Hub restart produces a documented gap resync;
-5. RSS, CPU, database/WAL size and reconnect behavior remain within the V0.6 budget.
+3. one real ready observation compared with the authoritative patched path; other semantic kinds remain covered by fixtures and do not block this bounded retry;
+4. an isolated forced-gap test proves current-state recovery without message-history scanning; do not restart the production Hub for this gate;
+5. at least four 75-second idle/reconnect cycles keep the source live, followed by RSS, CPU, database/WAL and reconnect checks within the V0.6 budget.
 
 Create a temporary comparison key with at least 32 random bytes inside `/var/lib/hapi-companion-sidecar`, owned by `hapi-mobile-relay` and mode `0600`. Run the report as that same service user, with the unit's private paths explicitly supplied:
 
@@ -48,7 +48,7 @@ sudo -u hapi-mobile-relay env \
   sidecar-shadow-report /var/lib/hapi-companion-sidecar/shadow-report.key
 ```
 
-The report contains only event kind, count, high-water sequence and an HMAC-SHA256 session fingerprint; it excludes session IDs, titles, bodies, topics and credentials. Trigger the five kinds in one known canary session, compare the reported kind counts and common session fingerprint with the expected sequence and the concurrently observed patched notifications, then delete the temporary key and report after recording the pass/fail result. Never send either file through chat or logs.
+The report contains only event kind, count, high-water sequence and an HMAC-SHA256 session fingerprint; it excludes session IDs, titles, bodies, topics and credentials. For this one bounded retry, compare one real ready observation with the authoritative patched notification, then delete the temporary key and report after recording the pass/fail result. Never send either file through chat or logs. The private shadow must keep delivery rows at zero, leave the legacy Relay healthy and add no public route or client binding. Any recurrence of source attention stops V0.6 rather than creating another candidate.
 
 ## Authorized cutover
 
@@ -70,7 +70,7 @@ After acceptance, record the immutable package hash, Sidecar database schema 2, 
 
 Build with `./scripts/package-sidecar.sh bun-linux-x64`. The bundle contains the compiled executable, hardened unit, installer, API/runbook and a manifest binding the binary SHA-256, architecture, Sidecar schema 2, management API 2 and consumer contract 1. The operator selects the package matching the VM architecture; the installer verifies strict semver and the expected artifact hash and never enables or restarts the service. It refuses to touch an active Sidecar. For an upgrade, first create and verify the schema-matched SQLite/JSON rollback set, stop the service, install the candidate, and start it explicitly. If acceptance fails, stop it and restore the prior binary, database, JSON state and unchanged secret set together before starting the prior service. There is deliberately no binary-only automatic rollback.
 
-Run `./scripts/test-official-hapi-v0307.sh` before packaging. It refuses a dirty or wrong-baseline checkout, runs that exact upstream version's session/message/replay/namespace tests, and starts clean official commit `0239edf38e2da653d662f31039e24ccea04c7837` in an isolated directory for a real authentication, namespace-identity, catalog and SSE connected/resume handshake. The five semantic notification shapes remain covered locally by adapter/interpreter fixtures because generating all five requires real Runner activity; production shadow must exercise all five before cutover.
+Run `./scripts/test-official-hapi-v0307.sh` before packaging. It refuses a dirty or wrong-baseline checkout, runs that exact upstream version's session/message/replay/namespace tests, and starts clean official commit `0239edf38e2da653d662f31039e24ccea04c7837` in an isolated directory for a real authentication, namespace-identity, catalog and SSE connected/resume handshake. All five semantic notification shapes remain covered locally by adapter/interpreter fixtures. The bounded private shadow gate requires one real ready observation; it does not wait for rare kinds to occur naturally.
 
 ## Rollback
 

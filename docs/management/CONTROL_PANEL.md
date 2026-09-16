@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-16
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The reviewed V0.6 Sidecar is running in authorized production shadow mode on private loopback port 8791. It observes official HAPI REST/SSE but creates no Mac or phone deliveries; the patched Hub and live Relay remain authoritative and unchanged. Source isolation, Sidecar restart recovery, ready-event parity and the first resource checks pass. Rare-kind comparison, a separately authorized Hub-restart gap test and a longer soak remain before any cutover decision.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. The V0.6 Sidecar shadow is stopped after its historical-message gap scan exceeded the bounded pagination guard on a long session. Local alpha.8 removes that scan and passes local plus official-HAPI gates; independent review and one isolated/private shadow validation remain before any cutover discussion.
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepted the narrow reliability tradeoff: an abnormal HAPI restart may hide a transient notification that starts and disappears while HAPI's in-memory replay is unavailable. Normal operation remains live over one SSE; after the Sidecar observes an event, it persists it and gives Mac and Android independent delivery cursors, so either endpoint can fail without blocking the other. The VM keeps the HAPI credential; clients receive scoped Sidecar credentials. Production shadow uses alpha.4 from `main` `8b739d51a35a02009c9c3747206ea96ea8ddc0cb`, with source state live, zero delivery rows and zero restarts. A two-hour steady comparison matched all 31 patched-Hub ready notifications, with 175 ms median, 1.7 s p95 and 3.41 s maximum observation delta. Non-semantic patch filtering and bounded cursor batching reduced steady write traffic from roughly 154 KB/s to 20 KB/s and brought two consecutive CPU samples to a combined 0.92% of one core. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+The product owner accepted the narrow reliability tradeoff: after an official SSE replay gap, any ready/task event outside available replay may be missed even if its message remains in history. Current pending input/permission requests are recovered from session state. Normal operation remains live over one SSE; after the Sidecar observes an event, it persists it and gives Mac and Android independent delivery cursors, so either endpoint can fail without blocking the other. The VM keeps the HAPI credential; clients receive scoped Sidecar credentials. Earlier alpha.4 shadow evidence showed two-hour ready-event parity and reduced steady resource use, but that shadow is no longer running. Alpha.8 is a local candidate pending the bounded isolated gate and one private shadow attempt. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -131,7 +131,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
-| V0.6 official-HAPI Sidecar | Production shadow active | source is live on isolated port 8791 and creates zero delivery rows; collect five semantic kinds, controlled restart/gap evidence and resource soak before discussing cutover or real Mac/OPPO migration |
+| V0.6 official-HAPI Sidecar | Local alpha.8 candidate | production shadow is stopped; the bounded gap-recovery fix passes local and official-HAPI gates, pending independent review and one isolated/private shadow validation |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -175,7 +175,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed/notarized release | clean-machine install | V0.6 production shadow comparison | — | v0.1.0 source-first release; V0.6 reviewed implementation candidate |
+| signed/notarized release | clean-machine install | V0.6 alpha.8 independent review and isolated validation | — | v0.1.0 source-first release; V0.6 architecture/root-cause review |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting

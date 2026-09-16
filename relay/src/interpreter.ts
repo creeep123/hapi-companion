@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { CompanionEvent, OfficialMessage, OfficialMessagesPage, OfficialRequest, OfficialSession, OfficialSyncEvent } from './types'
+import type { CompanionEvent, OfficialMessage, OfficialRequest, OfficialSession, OfficialSyncEvent } from './types'
 
 const INPUT_TOOLS = new Set(['request_user_input', 'AskUserQuestion', 'ask_user_question', 'CursorAskQuestion'])
 const COMPLETE = new Set(['completed', 'complete', 'done', 'success'])
@@ -42,10 +42,12 @@ export class EventInterpreter {
     })) }
   }
 
-  messageCursor(sessionId: string): { epoch: number; at: number; seq: number } | undefined {
-    const value = this.snapshots.get(sessionId)
-    return value?.messageEpoch !== undefined && value.messageAt !== undefined && value.messageSeq !== undefined
-      ? { epoch: value.messageEpoch, at: value.messageAt, seq: value.messageSeq } : undefined
+  clearMessageWatermarks(): void {
+    for (const snapshot of this.snapshots.values()) {
+      delete snapshot.messageEpoch
+      delete snapshot.messageAt
+      delete snapshot.messageSeq
+    }
   }
 
   sessionPatchNeedsRefresh(sessionId: string, data: unknown): boolean {
@@ -59,37 +61,6 @@ export class EventInterpreter {
       return true
     }
     return false
-  }
-
-  baselineMessages(sessionId: string, page: OfficialMessagesPage): void {
-    const snapshot = this.snapshots.get(sessionId); if (!snapshot) return
-    snapshot.messageEpoch = page.page.epoch
-    if (page.page.snapshotHeadAt !== null && page.page.snapshotHeadSeq !== null) {
-      snapshot.messageAt = page.page.snapshotHeadAt; snapshot.messageSeq = page.page.snapshotHeadSeq
-    } else { snapshot.messageAt = 0; snapshot.messageSeq = 0 }
-  }
-
-  observeMessages(sessionId: string, page: OfficialMessagesPage): Candidate[] {
-    const snapshot = this.snapshots.get(sessionId); if (!snapshot) return []
-    const current = this.messageCursor(sessionId)
-    if (page.page.reset || (current && current.epoch !== page.page.epoch)) { this.baselineMessages(sessionId, page); return [] }
-    const candidates: Candidate[] = []
-    for (const message of page.messages) {
-      const at = message.invokedAt ?? message.createdAt
-      candidates.push(...this.observe({ type: 'message-received', sessionId, message }, `message:${page.page.epoch}:${at}:${message.seq}`))
-    }
-    const at = page.page.nextAfterAt ?? page.page.snapshotHeadAt
-    const seq = page.page.nextAfterSeq ?? page.page.snapshotHeadSeq
-    snapshot.messageEpoch = page.page.epoch
-    if (at !== null && seq !== null) { snapshot.messageAt = at; snapshot.messageSeq = seq }
-    return candidates
-  }
-
-  liveMessageIdentity(sessionId: string, message: unknown, fallback: string): string {
-    if (!isObject(message) || !Number.isSafeInteger(message.seq) || !Number.isSafeInteger(message.createdAt)) return fallback
-    const snapshot = this.snapshots.get(sessionId), at = Number.isSafeInteger(message.invokedAt) ? Number(message.invokedAt) : Number(message.createdAt)
-    if (snapshot?.messageEpoch !== undefined) { snapshot.messageAt = at; snapshot.messageSeq = Number(message.seq) }
-    return `message:${snapshot?.messageEpoch ?? 'live'}:${at}:${message.seq}`
   }
 
   enrichReady(candidates: Candidate[], messages: OfficialMessage[]): Candidate[] {

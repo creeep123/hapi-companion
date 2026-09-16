@@ -9,7 +9,7 @@
 
 HAPI Companion must be able to use an unmodified official HAPI package. A Companion-owned Sidecar on the same VM observes HAPI's public REST and SSE interfaces, converts their state changes into the existing Companion event contract, stores every observed notification durably, and delivers it independently to the Mac app and the Android ntfy channel.
 
-Normal delivery remains live rather than timer based. Once the Sidecar has observed and committed an event, each downstream consumer receives explicit replay and advances its own cursor. A HAPI restart can erase official HAPI's short in-memory event history; a transient event that both starts and disappears inside that outage can therefore be missed. The product owner explicitly accepts that exceptional loss boundary.
+Normal delivery remains live rather than timer based. Once the Sidecar has observed and committed an event, each downstream consumer receives explicit replay and advances its own cursor. A HAPI restart can erase official HAPI's short in-memory event history; ready and task events that are no longer replayable across that gap can therefore be missed. The product owner explicitly accepts that exceptional loss boundary. Pending input and permission requests are recovered from current session state.
 
 This version does not remove the current HAPI patch from production. It creates, tests, shadows and prepares the replacement. Patch retirement is a later, separately authorized production operation.
 
@@ -28,7 +28,7 @@ This version does not remove the current HAPI patch from production. It creates,
 
 ## 3. Accepted limits
 
-- Official HAPI keeps SSE replay only in process memory, currently bounded to 256 events or 2 MiB. Its process epoch changes on restart. If a transient notification is born and disappears while that history is unavailable, the Sidecar may miss it.
+- Official HAPI keeps SSE replay only in process memory, currently bounded to 256 events or 2 MiB. Its process epoch changes on restart. Ready and task events that fall outside available replay may be missed, whether or not their messages remain in history; the Sidecar does not scan transcripts after a gap.
 - A known pending input/permission request can be recovered from a session snapshot. A completed session cannot always be distinguished from an abort after a gap, so the Sidecar prefers a missed completion to a false completion.
 - Notification semantics rely on official event and session shapes that are public application APIs but not yet a dedicated stable notification contract. Every HAPI upgrade must pass the composite compatibility and deployment gates in section 15.
 - The official API has no notification-only credential. The Sidecar therefore needs a namespace-scoped HAPI CLI access token on the VM.
@@ -42,7 +42,7 @@ The Sidecar uses only these official v0.30.7 routes:
 | Login | `POST /api/auth` | Exchange a CLI access token for a four-hour JWT |
 | Catalog | `GET /api/sessions` | Namespace-filtered session summaries |
 | Detail | `GET /api/sessions/:id` | Full `agentState.requests` and turn state |
-| Messages | `GET /api/sessions/:id/messages` | Cursor/page recovery for ready/task messages |
+| Messages | `GET /api/sessions/:id/messages` | Optional bounded preview enrichment for one live ready event |
 | Events | `GET /api/events?all=true&visibility=hidden` | One SSE, connected first frame, replay or gap indication |
 
 The SSE connection sends `Authorization: Bearer <JWT>`. `Last-Event-ID` resumes within the same HAPI process epoch. The first frame must be `connection-changed` with `status=connected` and `resume=ok|gap`. The adapter ignores unknown event types and unknown fields while rejecting malformed required fields.
@@ -79,7 +79,7 @@ This is the only module that understands official HAPI wire formats. It owns:
 
 - access-token login and in-memory JWT renewal;
 - the single upstream SSE connection;
-- catalog, session-detail and message REST calls;
+- catalog and session-detail calls, plus bounded message preview enrichment for a live ready event;
 - SSE parsing, heartbeat timeout, reconnect backoff and `resume=ok|gap` handling;
 - one isolated state machine per configured namespace.
 
@@ -100,7 +100,7 @@ The interpreter consumes typed observations and owns session aggregate state:
 - `active`, `thinking`, `activeTurnStartedAt`;
 - title and bounded agent/machine metadata;
 - pending request IDs and tools;
-- per-session message cursor;
+- legacy optional message-watermark fields, cleared whenever a gap baseline is committed;
 - ready cooldown and task/completion suppression window.
 
 It emits a version 1 `CompanionEvent` candidate only when a supported semantic transition is proven. It does not perform network delivery.
@@ -191,18 +191,17 @@ Record a turn start only from `thinking=true` plus a valid `activeTurnStartedAt`
 
 ### 6.6 Identity, deduplication and URL
 
-A canonical `eventId` is deterministically derived from namespace identity hash, session ID, stable source identity (official event ID, message cursor or request ID), and semantic kind. Raw official frames and event IDs are not copied into notification payloads.
+A canonical `eventId` is deterministically derived from namespace identity hash, session ID, stable source identity (official event ID or request ID), and semantic kind. Raw official frames and event IDs are not copied into notification payloads.
 
 Normative source dedupe keys are:
 
 | Kind | Source key |
 |---|---|
-| ready/task recovered from message | `namespaceHash/sessionId/messageEpoch/messageAt/messageSeq/kind` |
-| live ready/task without a known message epoch | `namespaceHash/sessionId/officialEventId/kind` |
+| live ready/task | `namespaceHash/sessionId/officialEventId/kind` |
 | input/permission | `namespaceHash/sessionId/requestId/kind` |
 | explicit completion | `namespaceHash/sessionId/officialEventId/session-completed` |
 
-The official SSE ID is persisted as the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful catalog replacement. Message position is the official tuple `(epoch, at, seq)`, never a synthetic scalar. The internal `(epoch, 0, 0)` marker means the session had no message watermark; after an upstream gap it is rebaselined with a latest-message request and is never sent as an incremental API cursor. After a message epoch reset, the adapter establishes a new watermark from `snapshotHead`; it never re-emits older latest messages. Source dedupe rows outlive notification retention for 45 days so a late replay cannot recreate an expired notification.
+The official SSE ID is persisted as the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful catalog replacement. Legacy message-watermark fields remain readable for state compatibility but are cleared on a gap and are never used for historical recovery. Source dedupe rows outlive notification retention for 45 days so a late SSE replay cannot recreate an expired notification.
 
 The URL is always:
 
@@ -225,20 +224,20 @@ REST snapshots are not globally atomic. To avoid losing or duplicating events du
 1. Open SSE first and buffer frames after its connected handshake.
 2. Fetch the session catalog and required full-session details.
 3. Compare the new snapshot with the durable interpreter checkpoint and identify newly visible request IDs.
-4. Fetch messages after known per-session cursors where possible.
-5. Atomically commit recovered candidates, catalog and interpreter checkpoint.
-6. Apply buffered SSE frames in order. Durable source keys suppress anything already recovered, then enter live mode.
+4. Clear any legacy per-session message watermarks. Do not fetch or scan message history.
+5. Atomically commit recovered request candidates, catalog and interpreter checkpoint.
+6. Apply buffered SSE frames in order using each official frame ID as its source identity, then enter live mode.
 
-The reconciliation buffer is capped at 2,048 frames and 8 MiB encoded, whichever is reached first. Overflow aborts the uncommitted snapshot/candidates, closes the stream, records `source_reconcile_overflow`, and reconnects from the last committed SSE cursor after backoff. The source remains non-live and creates no deliveries until a complete reconciliation succeeds. Detail/message fetch concurrency is capped at eight and each request has a 15-second deadline.
+The reconciliation buffer is capped at 2,048 frames and 8 MiB encoded, whichever is reached first. Overflow aborts the uncommitted snapshot/candidates, closes the stream, records `source_reconcile_overflow`, and reconnects from the last committed SSE cursor after backoff. The source remains non-live and creates no deliveries until a complete reconciliation succeeds. Session-detail fetch concurrency is capped at eight and each request has a 15-second deadline.
 
 Safe recovery behavior:
 
 - newly visible request IDs may generate input/permission notifications;
-- ready/task notifications are recovered only from official messages after a known message cursor;
+- ready/task notifications are emitted only from replayed or live SSE frames, never reconstructed from historical messages;
 - active-to-inactive without an end reason does not generate completion;
 - cold start establishes a baseline and does not notify historical idle sessions or old requests.
 
-An event that appears and disappears entirely while HAPI replay is unavailable remains unrecoverable and is an accepted limit.
+A ready/task event outside HAPI's available replay remains unrecoverable and is an accepted limit. Current pending input/permission requests remain recoverable from session detail.
 
 ## 8. Storage model
 
@@ -248,7 +247,7 @@ Minimum schema:
 |---|---|
 | `schema_meta` | Sidecar schema version and migration state |
 | `source_binding` | HAPI origin, namespace hash, last event ID, snapshot generation and health code |
-| `interpreter_state` | Versioned bounded session aggregates and official message watermarks, transactionally checkpointed with the source cursor |
+| `interpreter_state` | Versioned bounded session aggregates, transactionally checkpointed with the source cursor; legacy message-watermark fields are optional and cleared after a gap |
 | `source_dedup` | Stable interpreted source keys |
 | `canonical_notifications` | Monotonic sequence, version 1 event payload and retention metadata |
 | `consumers` | Mac/ntfy identity, credential hash, enabled state and ACK cursor |
@@ -330,7 +329,7 @@ V2 ntfy activation maps the existing receiver installation ID, topic secret, pol
 
 ### Phase A: local and integration validation
 
-Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. Real Runner-generated semantics remain a shadow gate because they require an operating Hub/Runner workload.
+Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. One real Runner-generated ready event remains a private shadow gate; rare kinds do not have to occur naturally.
 
 ### Phase B: production shadow
 
@@ -394,7 +393,7 @@ Release acceptance records measured idle/load values and verifies journal bounds
 - exactly one upstream SSE and no polling loop;
 - connected first frame, heartbeat, `resume=ok`, replay order and `resume=gap`;
 - SSE CRLF, multi-data lines, partial frames, size limits and unknown event compatibility;
-- catalog/detail/message pagination and message epoch reset;
+- catalog/detail coverage and bounded live-ready preview enrichment;
 - capability failure is fail closed and visible.
 
 ### 15.2 Interpretation
@@ -404,7 +403,8 @@ Release acceptance records measured idle/load values and verifies journal bounds
 - ready cooldown, task/completion suppression and end-reason filtering;
 - known/unknown duration behavior;
 - deterministic identity, bounded sanitized content and exact encoded URL;
-- gap snapshot/live race produces neither duplicate nor provable loss.
+- a 230-session gap with arbitrarily deep message history makes zero message-history calls and reaches live state;
+- gap snapshot/buffered-live races preserve order and deduplicate by official SSE frame ID;
 
 ### 15.3 Durability and consumers
 
@@ -435,7 +435,7 @@ Release acceptance records measured idle/load values and verifies journal bounds
 - real unmodified HAPI v0.30.7 triggers each notification kind;
 - real Mac banner, sound and exact PWA reuse/navigation;
 - real OPPO notification and exact-session click with VPN on and off;
-- Hub restart demonstrates the documented accepted gap boundary.
+- a forced replay gap demonstrates current-state recovery and the documented ready/task loss boundary without restarting production Hub.
 
 ### 15.6 HAPI upgrade gate
 

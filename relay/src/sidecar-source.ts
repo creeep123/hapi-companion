@@ -98,31 +98,30 @@ export class SidecarSourceEngine {
       const candidates = []
       if (!hadState) this.interpreter.baseline(details)
       else for (const detail of details) candidates.push(...this.interpreter.observeSession(detail, `reconcile:${detail.id}`))
-      for (const detail of details) candidates.push(...await this.reconcileMessages(detail.id, !hadState, signal))
+      const requestSessionIds = [...new Set(candidates
+        .filter(candidate => candidate.event.kind === 'input-request' || candidate.event.kind === 'permission-request')
+        .map(candidate => candidate.event.sessionId))]
+      if (requestSessionIds.length) {
+        await this.sleep(500, signal)
+        const pending = new Map<string, Set<string>>()
+        for (let start = 0; start < requestSessionIds.length; start += 8) {
+          const refreshed = await Promise.all(requestSessionIds.slice(start, start + 8).map(id => this.client.session(id, signal)))
+          for (const session of refreshed) {
+            pending.set(session.id, new Set(requestIds(session)))
+            candidates.push(...this.interpreter.observeSession(session, `reconcile:${session.id}`))
+          }
+        }
+        for (let index = candidates.length - 1; index >= 0; index--) {
+          const event = candidates[index].event
+          if (event.requestId && !pending.get(event.sessionId)?.has(event.requestId)) candidates.splice(index, 1)
+        }
+      }
+      this.interpreter.clearMessageWatermarks()
       if (!hadState) this.store.commitBaseline(catalog.map(catalogItem), this.interpreter.exportState())
       else this.store.commitReconciliation(candidates, catalog.map(catalogItem), this.interpreter.exportState(), this.deliveryKinds)
       this.baselineReady = true
       if (candidates.length) { this.broker.signal(); this.onEvent() }
     } catch (error) { if (before) this.interpreter.restoreState(before); throw error }
-  }
-
-  private async reconcileMessages(sessionId: string, cold: boolean, signal: AbortSignal) {
-    const cursor = this.interpreter.messageCursor(sessionId)
-    if (cold || !cursor || (cursor.at === 0 && cursor.seq === 0)) {
-      const latest = await this.client.messages(sessionId, { limit: 1 }, signal)
-      this.interpreter.baselineMessages(sessionId, latest)
-      return []
-    }
-    const candidates = []; let afterAt = cursor.at, afterSeq = cursor.seq, untilAt: number | undefined, untilSeq: number | undefined
-    for (let pageCount = 0; pageCount < 100; pageCount++) {
-      const page = await this.client.messages(sessionId, { afterAt, afterSeq, untilAt, untilSeq, epoch: cursor.epoch, limit: 200 }, signal)
-      candidates.push(...this.interpreter.observeMessages(sessionId, page))
-      if (page.page.reset || !page.page.hasMore) return candidates
-      untilAt ??= page.page.snapshotHeadAt ?? undefined; untilSeq ??= page.page.snapshotHeadSeq ?? undefined
-      if (page.page.nextAfterAt === null || page.page.nextAfterSeq === null) throw new OfficialHapiError('contract_invalid', true)
-      afterAt = page.page.nextAfterAt; afterSeq = page.page.nextAfterSeq
-    }
-    throw new OfficialHapiError('contract_invalid', true)
   }
 
   private async apply(item: Extract<OfficialStreamItem, { type: 'event' }>, signal: AbortSignal) {
@@ -149,8 +148,7 @@ export class SidecarSourceEngine {
       }
       catalog = await this.refreshCatalog(signal)
     } else {
-      const identity = event.type === 'message-received' && event.sessionId ? this.interpreter.liveMessageIdentity(event.sessionId, event.message, id) : id
-      candidates = this.interpreter.observe(event, identity)
+      candidates = this.interpreter.observe(event, id)
       if (event.sessionId && candidates.some(candidate => candidate.event.kind === 'ready')) {
         const latest = await this.client.messages(event.sessionId, { limit: 50 }, signal)
         candidates = this.interpreter.enrichReady(candidates, latest.messages)

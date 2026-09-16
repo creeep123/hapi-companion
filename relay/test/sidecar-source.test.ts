@@ -79,43 +79,142 @@ describe('SidecarSourceEngine', () => {
     release(); for (let i = 0; i < 20 && !store.pending(credential.consumerId).length; i++) await Bun.sleep(5)
     expect(store.pending(credential.consumerId)[0]?.event.kind).toBe('session-completed'); expect(store.sourceCursor()).toBe('epoch:1'); await engine.stop()
   })
+  test('applies a buffered ready once using its SSE frame identity and only enriches that live event', async () => {
+    let release!: () => void; const hold = new Promise<void>(resolve => { release = resolve }); let messageCalls = 0
+    const client = {
+      catalog: async () => { await hold; return [{ id: 's1', active: true, metadata: { name: 'Project', flavor: 'codex' } }] },
+      session: async () => ({ id: 's1', active: true, thinking: false, metadata: { name: 'Project', flavor: 'codex' } }),
+      messages: async () => { messageCalls++; return { messages: [{ seq: 1, createdAt: 1, role: 'agent', content: 'Finished' }], page: { epoch: 1, reset: false, nextAfterSeq: 1, nextAfterAt: 1, snapshotHeadSeq: 1, snapshotHeadAt: 1, hasMore: false } } },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        const frame = { id: 'official:ready:1', event: { type: 'message-received', sessionId: 's1', message: { seq: 7, createdAt: 7, content: { type: 'event', data: { type: 'ready' } } } } }
+        yield { type: 'event', frame }; yield { type: 'event', frame }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, credential, engine } = await setup(client); engine.start(); await Bun.sleep(10); release()
+    for (let i = 0; i < 30 && store.sourceCursor() !== 'official:ready:1'; i++) await Bun.sleep(5)
+    expect(store.pending(credential.consumerId)).toHaveLength(1); expect(store.pending(credential.consumerId)[0]?.event).toMatchObject({ kind: 'ready', body: 'Finished' }); expect(messageCalls).toBe(1)
+    expect(store.db.query('SELECT source_key FROM source_dedup').all()).toEqual([{ source_key: 'ns/s1/official:ready:1/ready' }]); await engine.stop()
+  })
+  test('deduplicates a buffered task by SSE frame ID and suppresses its following generic completion', async () => {
+    let messageCalls = 0
+    const client = {
+      catalog: async () => [{ id: 's1', active: true }], session: async () => ({ id: 's1', active: true }),
+      messages: async () => { messageCalls++; throw new Error('task must not read messages') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        const task = { id: 'official:task:1', event: { type: 'message-received', sessionId: 's1', message: { content: { type: 'output', data: { type: 'system', subtype: 'task_notification', summary: 'Done', status: 'success' } } } } }
+        yield { type: 'event', frame: task }; yield { type: 'event', frame: task }
+        yield { type: 'event', frame: { id: 'official:end:1', event: { type: 'session-ended', sessionId: 's1', reason: 'completed' } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, credential, engine } = await setup(client); engine.start()
+    for (let i = 0; i < 30 && store.sourceCursor() !== 'official:end:1'; i++) await Bun.sleep(5)
+    expect(store.pending(credential.consumerId).map(item => item.event.kind)).toEqual(['task-notification']); expect(messageCalls).toBe(0); await engine.stop()
+  })
   test('does not notify existing state on cold gap baseline', async () => {
     const client = {
       catalog: async () => [{ id: 's1', title: 'One', active: true, pendingRequestsCount: 1 }],
       session: async () => ({ id: 's1', title: 'One', active: true, agentState: { requests: { old: { tool: 'Bash' } } } }),
       messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
-      events: async function* () { yield { type: 'connected', connected: { resume: 'gap' } } }
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
     }
     const { store, credential, engine } = await setup(client); engine.start(); await Bun.sleep(20); expect(store.pending(credential.consumerId)).toEqual([]); expect(store.catalog().sessions).toHaveLength(1); await engine.stop()
   })
-  test('restores durable interpreter state and recovers a ready message across a gap', async () => {
+  test('restores current state across a gap without scanning historical messages', async () => {
+    let messageCalls = 0
     const client = {
       catalog: async () => [{ id: 's1', active: true, metadata: { name: 'Project', flavor: 'codex' } }],
       session: async () => ({ id: 's1', active: true, thinking: false, metadata: { name: 'Project', flavor: 'codex' } }),
-      messages: async (_id: string, query: any) => query.afterSeq === undefined
-        ? { messages: [], page: { epoch: 3, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: 10, snapshotHeadAt: 1000, hasMore: false } }
-        : { messages: [{ id: 'm11', seq: 11, createdAt: 1100, content: { type: 'event', data: { type: 'ready' } } }], page: { epoch: 3, reset: false, nextAfterSeq: 11, nextAfterAt: 1100, snapshotHeadSeq: 11, snapshotHeadAt: 1100, hasMore: false } },
-      events: async function* () { yield { type: 'connected', connected: { resume: 'gap' } } }
+      messages: async () => { messageCalls++; throw new Error('history must not be scanned') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
     }
     const { store, credential, engine } = await setup(client)
-    const initial = new EventInterpreter('https://hapi.example', 'ns', () => 10_000); initial.baseline([await client.session()]); initial.baselineMessages('s1', await client.messages('s1', {}))
+    const initial = new EventInterpreter('https://hapi.example', 'ns', () => 10_000)
+    initial.restoreState({ version: 1, sessions: [{ session: await client.session(), requestIds: [], messageEpoch: 3, messageAt: 1000, messageSeq: 10 }] })
     store.commitBaseline((await client.catalog()).map((item: any) => ({ id: item.id, title: item.metadata.name, active: item.active })), initial.exportState())
-    engine.start(); for (let i = 0; i < 20 && !store.pending(credential.consumerId).length; i++) await Bun.sleep(5)
-    expect(store.pending(credential.consumerId)[0]?.event).toMatchObject({ kind: 'ready', sessionName: 'Project' }); await engine.stop()
+    engine.start(); for (let i = 0; i < 20 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue(); expect(messageCalls).toBe(0); expect(store.pending(credential.consumerId)).toEqual([])
+    const saved = store.interpreterState()!; expect(saved.version).toBe(1); expect(saved.sessions[0]).not.toHaveProperty('messageEpoch'); expect(saved.sessions[0]).not.toHaveProperty('messageAt'); expect(saved.sessions[0]).not.toHaveProperty('messageSeq'); await engine.stop()
   })
-  test('rebaselines an empty message watermark after a gap instead of sending a zero cursor', async () => {
-    const queries: any[] = []
+  test('handles a large gap catalog without reading any message pages', async () => {
+    let messageCalls = 0
+    const catalog = Array.from({ length: 230 }, (_, index) => ({ id: `s${index}`, active: index === 0, metadata: { name: `Session ${index}`, flavor: 'codex' } }))
     const client = {
-      catalog: async () => [{ id: 's1', active: false, metadata: { name: 'Empty', flavor: 'codex' } }],
-      session: async () => ({ id: 's1', active: false, metadata: { name: 'Empty', flavor: 'codex' } }),
-      messages: async (_id: string, query: any) => { queries.push(query); return { messages: [], page: { epoch: 4, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } } },
+      catalog: async () => catalog,
+      session: async (id: string) => catalog.find(item => item.id === id),
+      messages: async () => { messageCalls++; return { messages: [], page: { epoch: 4, reset: false, nextAfterSeq: 100, nextAfterAt: 1000, snapshotHeadSeq: 100, snapshotHeadAt: 1000, hasMore: true } } },
       events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
     }
     const { store, engine } = await setup(client)
-    const initial = new EventInterpreter('https://hapi.example', 'ns', () => 10_000); initial.baseline([await client.session()]); initial.baselineMessages('s1', await client.messages('s1', { limit: 1 }))
-    queries.length = 0; store.commitBaseline([{ id: 's1', active: false }], initial.exportState())
-    engine.start(); for (let i = 0; i < 30 && !queries.length; i++) await Bun.sleep(5)
-    expect(queries).toEqual([{ limit: 1 }]); await engine.stop()
+    engine.start(); for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue(); expect(messageCalls).toBe(0); expect(store.catalog().sessions).toHaveLength(230); await engine.stop()
+  })
+  test('recovers persistent gap requests once and does not repeat an existing request', async () => {
+    const detail = { id: 's1', active: true, agentState: { requests: { old: { tool: 'Bash' }, input: { tool: 'request_user_input' }, permission: { tool: 'Write' } } } }
+    const client = {
+      catalog: async () => [{ id: 's1', active: true, pendingRequestsCount: 3 }], session: async () => detail,
+      messages: async () => { throw new Error('history must not be scanned') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; yield { type: 'event', frame: { id: 'buffered:request', event: { type: 'session-updated', sessionId: 's1' } } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
+    }
+    const { store, credential, engine } = await setup(client, async () => {})
+    const initial = new EventInterpreter('https://hapi.example', 'ns'); initial.baseline([{ id: 's1', active: true, agentState: { requests: { old: { tool: 'Bash' } } } }])
+    store.commitBaseline([{ id: 's1', active: true }], initial.exportState()); engine.start()
+    for (let i = 0; i < 30 && store.sourceCursor() !== 'buffered:request'; i++) await Bun.sleep(5)
+    expect(store.pending(credential.consumerId).map(item => [item.event.kind, item.event.requestId])).toEqual([['input-request', 'input'], ['permission-request', 'permission']]); await engine.stop()
+  })
+  test('drops a gap request that disappears during the confirmation delay', async () => {
+    let detailCalls = 0
+    const client = {
+      catalog: async () => [{ id: 's1', active: true, pendingRequestsCount: 1 }],
+      session: async () => ({ id: 's1', active: true, agentState: { requests: detailCalls++ === 0 ? { transient: { tool: 'Bash' } } : {} } }),
+      messages: async () => { throw new Error('history must not be scanned') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
+    }
+    const { store, credential, engine } = await setup(client, async () => {})
+    const initial = new EventInterpreter('https://hapi.example', 'ns'); initial.baseline([{ id: 's1', active: true }]); store.commitBaseline([{ id: 's1', active: true }], initial.exportState())
+    engine.start(); for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue(); expect(detailCalls).toBe(2); expect(store.pending(credential.consumerId)).toEqual([]); await engine.stop()
+  })
+  test('keeps a request that appears during gap confirmation and does not duplicate it from the buffer', async () => {
+    let detailCalls = 0
+    const client = {
+      catalog: async () => [{ id: 's1', active: true, pendingRequestsCount: 1 }],
+      session: async () => ({ id: 's1', active: true, agentState: { requests: detailCalls++ === 0 ? { a: { tool: 'Write' } } : { a: { tool: 'Write' }, b: { tool: 'request_user_input' } } } }),
+      messages: async () => { throw new Error('history must not be scanned') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; yield { type: 'event', frame: { id: 'buffered:new-request', event: { type: 'session-updated', sessionId: 's1' } } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
+    }
+    const { store, credential, engine } = await setup(client, async () => {})
+    const initial = new EventInterpreter('https://hapi.example', 'ns'); initial.baseline([{ id: 's1', active: true }]); store.commitBaseline([{ id: 's1', active: true }], initial.exportState())
+    engine.start(); for (let i = 0; i < 30 && store.sourceCursor() !== 'buffered:new-request'; i++) await Bun.sleep(5)
+    expect(store.pending(credential.consumerId).map(item => item.event.requestId)).toEqual(['a', 'b']); expect(detailCalls).toBe(3); await engine.stop()
+  })
+  test('replaces a disappearing gap request with a newly confirmed request', async () => {
+    let detailCalls = 0
+    const client = {
+      catalog: async () => [{ id: 's1', active: true, pendingRequestsCount: 1 }],
+      session: async () => ({ id: 's1', active: true, agentState: { requests: detailCalls++ === 0 ? { a: { tool: 'Write' } } : { b: { tool: 'request_user_input' } } } }),
+      messages: async () => { throw new Error('history must not be scanned') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
+    }
+    const { store, credential, engine } = await setup(client, async () => {})
+    const initial = new EventInterpreter('https://hapi.example', 'ns'); initial.baseline([{ id: 's1', active: true }]); store.commitBaseline([{ id: 's1', active: true }], initial.exportState())
+    engine.start(); for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(store.pending(credential.consumerId).map(item => item.event.requestId)).toEqual(['b']); expect(detailCalls).toBe(2); await engine.stop()
+  })
+  test('keeps the prior cursor catalog and watermark when a gap commit fails', async () => {
+    const client = {
+      catalog: async () => [{ id: 's1', title: 'New', active: true, pendingRequestsCount: 1 }], session: async () => ({ id: 's1', title: 'New', active: true, agentState: { requests: { new: { tool: 'Write' } } } }),
+      messages: async () => { throw new Error('history must not be scanned') }, events: async function* () { yield { type: 'connected', connected: { resume: 'gap' } } }
+    }
+    const sleep = async (ms: number) => { if (ms !== 500) throw new DOMException('aborted', 'AbortError') }
+    const { store, credential, engine } = await setup(client, sleep)
+    const initial = new EventInterpreter('https://hapi.example', 'ns'); initial.restoreState({ version: 1, sessions: [{ session: { id: 's1', title: 'Old', active: true }, requestIds: [], messageEpoch: 2, messageAt: 20, messageSeq: 2 }] })
+    store.commitBaseline([{ id: 's1', title: 'Old', active: true }], initial.exportState()); store.advanceCursor('old:cursor')
+    store.commitReconciliation = (() => { throw new Error('forced commit failure') }) as SidecarStore['commitReconciliation']; engine.start(); await Bun.sleep(30); await engine.stop()
+    expect(store.sourceCursor()).toBe('old:cursor'); expect(store.catalog().sessions[0]?.title).toBe('Old'); expect(store.interpreterState()?.sessions[0]).toMatchObject({ messageEpoch: 2, messageAt: 20, messageSeq: 2 }); expect(store.pending(credential.consumerId)).toEqual([])
   })
   test('reconciliation overflow aborts the source and preserves the committed cursor', async () => {
     const client = {
