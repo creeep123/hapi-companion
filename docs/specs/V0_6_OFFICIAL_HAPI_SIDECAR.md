@@ -268,7 +268,7 @@ Database plus WAL has a 100 MiB operational ceiling. At 80 MiB the Sidecar check
 
 | Credential | Location | Scope |
 |---|---|---|
-| HAPI CLI access token | VM-only systemd credential or separate `0600` file | Namespace-wide official API access; never returned by Sidecar |
+| HAPI CLI access token | VM-only systemd credential or separate service-owned `0600` file | Namespace-wide official API access; never returned by Sidecar. The systemd path accepts only its exact root-owned, read-only credential mount; arbitrary root-owned files are rejected. |
 | HAPI JWT | Process memory only | Four-hour official API session |
 | Sidecar management token | Hash in Sidecar store; clear value in Mac Keychain | Configuration and consumer lifecycle |
 | Mac consumer token | Hash in Sidecar store; clear value in Mac Keychain | One consumer's catalog/events/ACK/revoke |
