@@ -8,6 +8,12 @@ BASELINE=0239edf38e2da653d662f31039e24ccea04c7837
 [[ "$(git -C "$OFFICIAL" rev-parse HEAD)" == "$BASELINE" ]] || { echo "official HAPI baseline mismatch" >&2; exit 1; }
 [[ -z "$(git -C "$OFFICIAL" status --porcelain --untracked-files=no)" ]] || { echo "official HAPI checkout has tracked changes" >&2; exit 1; }
 
+(cd "$OFFICIAL" && bun test \
+  hub/src/web/routes/messages.test.ts \
+  hub/src/web/routes/events.replay.test.ts \
+  hub/src/web/routes/sessions.test.ts \
+  hub/src/sse/sseManager.test.ts)
+
 GATE_ROOT="$(mktemp -d "$ROOT/.build-v06/official-hapi-gate.XXXXXX")"
 chmod 700 "$GATE_ROOT"
 PORT="$(python3 - <<'PY'

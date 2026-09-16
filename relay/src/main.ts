@@ -27,6 +27,13 @@ if (command === 'pair-code') {
   if (!sourceFile.isFile()) throw new Error('sidecar_database_invalid')
   const db = new SidecarStore(source); try { db.backup(destination) } finally { db.close() }
   process.stdout.write('sidecar backup verified\n')
+} else if (command === 'sidecar-shadow-report') {
+  const keyPath = process.argv[3]; if (!keyPath) throw new Error('shadow_report_key_required')
+  const key = await readPrivateFile(keyPath, 'shadow_report_key')
+  const source = process.env.HAPI_SIDECAR_DB ?? `${statePath}.sqlite`
+  const sourceFile = await lstat(source).catch((error: any) => { if (error?.code === 'ENOENT') throw new Error('sidecar_database_missing'); throw error })
+  if (!sourceFile.isFile()) throw new Error('sidecar_database_invalid')
+  const db = new SidecarStore(source); try { process.stdout.write(`${JSON.stringify(db.shadowReport(key))}\n`) } finally { db.close() }
 } else if (command === 'serve' || command === 'serve-sidecar') {
   const hostname = process.env.HAPI_MOBILE_RELAY_HOST ?? '127.0.0.1'; const port = Number(process.env.HAPI_MOBILE_RELAY_PORT ?? '8789')
   let handler = createHandler(manager), start = async () => { const s = await store.load(); if (s.enabled) await engine.start() }, stop = async () => engine.stop()
@@ -39,8 +46,8 @@ if (command === 'pair-code') {
     const broker = new ConsumerBroker(sidecarStore), ntfy = new NtfyConsumer(sidecarStore, store)
     const persisted = await store.load(), deliveryActive = deliveryMode === 'active' && persisted.enabled && persisted.sourceMode === 'officialHapi' && persisted.officialCutoverAt !== undefined
     const source = new SidecarSourceEngine(sidecarStore, new EventInterpreter(publicOrigin, namespaceHash), broker, officialClient, undefined, () => { if (deliveryMode === 'active') ntfy.signal() }, deliveryActive ? ['mac', 'ntfy'] : [])
-    const noLegacyEngine = { start: async () => {}, stop: async () => {}, restart: async () => {} } as RelayEngine
-    const sidecarRelayManager = new RelayManager(store, noLegacyEngine), sidecarManager = new SidecarManager(sidecarRelayManager, sidecarStore, publicOrigin, apiOrigin, () => deliveryMode === 'active' && source.isLive(), () => { source.setDeliveryActive(true); ntfy.start() })
+    const noLegacyEngine = { start: async () => { ntfy.start() }, stop: async () => { await ntfy.stop() }, restart: async () => { ntfy.start(); ntfy.signal() } } as RelayEngine
+    const sidecarRelayManager = new RelayManager(store, noLegacyEngine), sidecarManager = new SidecarManager(sidecarRelayManager, sidecarStore, publicOrigin, apiOrigin, () => deliveryMode === 'active' && source.isLive(), commit => source.activateDelivery(async () => { await commit(); ntfy.start() }))
     let maintenance: ReturnType<typeof setInterval> | undefined
     handler = createSidecarHandler(broker, sidecarManager, createHandler(sidecarRelayManager)); start = async () => { sidecarStore.expire(); if (deliveryActive) ntfy.start(); source.start(); maintenance = setInterval(() => sidecarStore.expire(), 3600_000) }; stop = async () => { if (maintenance) clearInterval(maintenance); await ntfy.stop(); await source.stop(); sidecarStore.close() }
   }
@@ -49,7 +56,7 @@ if (command === 'pair-code') {
   const shutdown = async () => { await stop(); server.stop(true); process.exit(0) }
   process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown)
   process.stdout.write(`${command === 'serve-sidecar' ? 'hapi-companion-sidecar' : 'hapi-mobile-relay'} listening on ${hostname}:${port}\n`)
-} else { process.stderr.write('usage: hapi-mobile-relay [serve|serve-sidecar|pair-code|sidecar-backup <path>]\n'); process.exit(2) }
+} else { process.stderr.write('usage: hapi-mobile-relay [serve|serve-sidecar|pair-code|sidecar-backup <path>|sidecar-shadow-report <key-file>]\n'); process.exit(2) }
 
 function requiredOrigin(name: string): string { const raw = process.env[name]; if (!raw) throw new Error(`${name}_required`); const url = new URL(raw); if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.search || url.hash) throw new Error(`${name}_invalid`); return `${url.protocol}//${url.host}` }
 async function readSourceToken(): Promise<string> {
@@ -58,4 +65,10 @@ async function readSourceToken(): Promise<string> {
   const file = await lstat(path); if (!file.isFile() || (file.mode & 0o077) !== 0 || (typeof process.getuid === 'function' && file.uid !== process.getuid())) throw new Error('source_credential_permissions')
   const token = (await readFile(path, 'utf8')).trim(); if (token.length < 16 || token.length > 4096 || /[\r\n]/.test(token)) throw new Error('source_credential_invalid')
   return token
+}
+async function readPrivateFile(path: string, label: string): Promise<Uint8Array> {
+  if (!path.startsWith('/')) throw new Error(`${label}_path_invalid`)
+  const info = await lstat(path); if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) throw new Error(`${label}_file_unsafe`)
+  if (typeof process.getuid === 'function' && info.uid !== process.getuid()) throw new Error(`${label}_file_owner`)
+  const value = await readFile(path); if (value.byteLength < 32) throw new Error(`${label}_too_short`); return value
 }

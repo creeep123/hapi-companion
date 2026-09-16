@@ -41,8 +41,8 @@ The product owner accepts that an official HAPI restart may hide a transient eve
 
 ## Current evidence
 
-- Clean official HAPI checkout: `0239edf38e2da653d662f31039e24ccea04c7837`; real auth/catalog/SSE black-box gate passes.
-- Relay: 143 tests plus TypeScript pass after the initial review fixes.
+- Clean official HAPI checkout: `0239edf38e2da653d662f31039e24ccea04c7837`; 116 upstream route/replay/namespace tests and the real auth/namespace/catalog/SSE process gate pass.
+- Relay: 147 tests plus TypeScript pass after the second review fixes, including serialized cutover, auxiliary SQLite path rejection and content-free shadow reporting.
 - Mac: 75 tests pass; probe-before-save, failed-probe rollback and replaced-consumer revocation are covered.
 - Candidate bundle: `0.6.0-alpha.1`; Linux x64 package smoke passes. Local pre-commit evidence: archive SHA-256 `0594efc5ad690363ec2f7907b769cb4e22239339b38d743f439606af763b669d`, binary SHA-256 `7fe3d35c86fb9c691a0323c33383a43502b5fcbf54a22ff7ba2d013a374e0b66`.
 - Production remains on the patched path. Real Mac/OPPO and shadow comparison require separately authorized deployment.

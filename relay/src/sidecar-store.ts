@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite'
+import { createHmac } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync } from 'node:fs'
 import { dirname, isAbsolute } from 'node:path'
 import { randomSecret, secretHash, secretMatches } from './crypto'
@@ -17,7 +18,11 @@ export class SidecarStore {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
     const dir = lstatSync(dirname(path)); if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o077) !== 0) throw new Error('sidecar_db_directory_permissions')
     if (typeof process.getuid === 'function' && dir.uid !== process.getuid()) throw new Error('sidecar_db_directory_owner')
-    if (existsSync(path)) { const file = lstatSync(path); if (!file.isFile() || file.isSymbolicLink() || (typeof process.getuid === 'function' && file.uid !== process.getuid())) throw new Error('sidecar_db_file_unsafe') }
+    for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+      if (!existsSync(candidate)) continue
+      const file = lstatSync(candidate)
+      if (!file.isFile() || file.isSymbolicLink() || (typeof process.getuid === 'function' && file.uid !== process.getuid())) throw new Error('sidecar_db_file_unsafe')
+    }
     this.db = new Database(path, { create: true, readwrite: true, strict: true })
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;')
     this.migrate(); this.secureFiles()
@@ -199,6 +204,18 @@ export class SidecarStore {
     this.db.query(`UPDATE deliveries SET state=?,attempts=attempts+1,terminal_at=?,reason=? WHERE consumer_id=? AND notification_seq=? AND state='pending'`).run(state, this.now(), reason ?? null, consumerId, seq)
   }
   highWater(): number { return Number((this.db.query('SELECT COALESCE(MAX(seq),0) AS value FROM canonical_notifications').get() as any).value) }
+  shadowReport(key: Uint8Array) {
+    if (key.byteLength < 32) throw new Error('shadow_report_key_too_short')
+    const groups = new Map<string, { kind: string; sessionFingerprint: string; count: number }>()
+    for (const row of this.db.query('SELECT payload FROM canonical_notifications ORDER BY seq').all() as Array<{ payload: string }>) {
+      const event = JSON.parse(row.payload) as Partial<CompanionEvent>
+      if (typeof event.kind !== 'string' || typeof event.sessionId !== 'string') throw new Error('invalid_canonical_event')
+      const sessionFingerprint = createHmac('sha256', key).update(event.sessionId).digest('hex')
+      const id = `${event.kind}/${sessionFingerprint}`, current = groups.get(id)
+      if (current) current.count += 1; else groups.set(id, { kind: event.kind, sessionFingerprint, count: 1 })
+    }
+    return { version: 1, highWaterSeq: this.highWater(), observations: [...groups.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.sessionFingerprint.localeCompare(b.sessionFingerprint)) }
+  }
   status(consumerId: string): ConsumerStatus {
     const row = this.db.query('SELECT replay_expired FROM consumers WHERE id=? AND enabled=1').get(consumerId) as any
     if (!row) throw new Error('consumer_not_found')

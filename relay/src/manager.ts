@@ -71,10 +71,9 @@ export class RelayManager {
     })
     await this.engine.start()
   }
-  async activateOfficial(receiverId: string, sourceReady: () => boolean = () => true, onCommitted: () => void = () => {}): Promise<void> {
+  async activateOfficial(receiverId: string, sourceReady: () => boolean = () => true, withCutover: (commit: () => Promise<void>) => Promise<void> = async commit => { await commit() }): Promise<void> {
     if (!sourceReady()) throw new Error('official_source_not_live')
-    await this.store.update(s => { if (!s.config || s.config.receiverId !== receiverId) throw new Error('not configured'); s.sourceMode = 'officialHapi'; s.officialCutoverAt = this.now(); s.enabled = true; s.paused = false; delete s.credential; delete s.activation; s.health.stream = 'connected'; delete s.health.attentionCode })
-    onCommitted()
+    await withCutover(() => this.store.update(s => { if (!s.config || s.config.receiverId !== receiverId) throw new Error('not configured'); s.sourceMode = 'officialHapi'; s.officialCutoverAt = this.now(); s.enabled = true; s.paused = false; delete s.credential; delete s.activation; s.health.stream = 'connected'; delete s.health.attentionCode }))
   }
   async pause(paused: boolean): Promise<void> { await this.store.update(s => { if (!s.activation && s.sourceMode !== 'officialHapi') throw new Error('not activated'); s.paused = paused }); await this.engine.start() }
   async resume(): Promise<void> { const s = await this.store.load(); if (!s.enabled || (!s.activation && s.sourceMode !== 'officialHapi')) throw new Error('not activated'); await this.engine.restart() }

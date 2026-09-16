@@ -38,6 +38,8 @@ Start with `HAPI_SIDECAR_DELIVERY_MODE=shadow`. Shadow mode records semantic obs
 4. Hub restart produces a documented gap resync;
 5. RSS, CPU, database/WAL size and reconnect behavior remain within the V0.6 budget.
 
+Create a temporary root-owned mode-`0600` comparison key with at least 32 random bytes. Run `hapi-mobile-relay sidecar-shadow-report <absolute-key-file>` locally on the VM after each controlled canary sequence. The report contains only event kind, count, high-water sequence and an HMAC-SHA256 session fingerprint; it excludes session IDs, titles, bodies, topics and credentials. Trigger the five kinds in one known canary session, compare the reported kind counts and common session fingerprint with the expected sequence and the concurrently observed patched notifications, then securely discard the temporary key and report after recording the pass/fail result. Never send either file through chat or logs.
+
 ## Authorized cutover
 
 Cut over only in a quiet window with no active turn. Drain the patched consumers and stop the old ntfy dispatcher. Change the environment ceiling to `HAPI_SIDECAR_DELIVERY_MODE=active`, restart the Sidecar, and wait until authenticated `GET /v2/status` reports `source.state=live` while `delivery.enabled=false`. Generate a new one-time pair code only when the Mac has no retained management binding.
@@ -56,9 +58,9 @@ After acceptance, record the immutable package hash, Sidecar database schema 2, 
 
 ## Candidate package
 
-Build with `./scripts/package-sidecar.sh bun-linux-x64`. The bundle contains the compiled executable, hardened unit, installer, API/runbook and a manifest binding the binary SHA-256, architecture, Sidecar schema 2, management API 2 and consumer contract 1. The operator selects the package matching the VM architecture; the installer verifies strict semver and the expected artifact hash, installs without enabling a new service, and rolls an already-active Sidecar back to the previous immutable binary if health fails.
+Build with `./scripts/package-sidecar.sh bun-linux-x64`. The bundle contains the compiled executable, hardened unit, installer, API/runbook and a manifest binding the binary SHA-256, architecture, Sidecar schema 2, management API 2 and consumer contract 1. The operator selects the package matching the VM architecture; the installer verifies strict semver and the expected artifact hash and never enables or restarts the service. It refuses to touch an active Sidecar. For an upgrade, first create and verify the schema-matched SQLite/JSON rollback set, stop the service, install the candidate, and start it explicitly. If acceptance fails, stop it and restore the prior binary, database, JSON state and unchanged secret set together before starting the prior service. There is deliberately no binary-only automatic rollback.
 
-Run `./scripts/test-official-hapi-v0307.sh` before packaging. It refuses a dirty or wrong-baseline checkout and starts the clean official commit `0239edf38e2da653d662f31039e24ccea04c7837` in an isolated directory to test real authentication, catalog and SSE connected/resume behavior. The five semantic notification shapes remain covered by adapter/interpreter fixtures because generating all five requires real Runner activity; production shadow and real-device gates remain mandatory before cutover.
+Run `./scripts/test-official-hapi-v0307.sh` before packaging. It refuses a dirty or wrong-baseline checkout, runs that exact upstream version's session/message/replay/namespace tests, and starts clean official commit `0239edf38e2da653d662f31039e24ccea04c7837` in an isolated directory for a real authentication, namespace-identity, catalog and SSE connected/resume handshake. The five semantic notification shapes remain covered locally by adapter/interpreter fixtures because generating all five requires real Runner activity; production shadow must exercise all five before cutover.
 
 ## Rollback
 

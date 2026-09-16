@@ -71,6 +71,13 @@ describe('SidecarStore', () => {
     const target = join(dir, 'target'); await Bun.write(target, 'not sqlite'); await import('node:fs/promises').then(fs => fs.symlink(target, join(dir, 'db')))
     expect(() => new SidecarStore(join(dir, 'db'))).toThrow('sidecar_db_file_unsafe')
   })
+  test('rejects unsafe pre-existing WAL and SHM paths before opening SQLite', async () => {
+    for (const suffix of ['-wal', '-shm']) {
+      const root = await mkdtemp(join(tmpdir(), 'sidecar-aux-link-')), dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 })
+      const target = join(dir, 'target'); await Bun.write(target, 'unsafe'); await import('node:fs/promises').then(fs => fs.symlink(target, join(dir, `db${suffix}`)))
+      expect(() => new SidecarStore(join(dir, 'db'))).toThrow('sidecar_db_file_unsafe')
+    }
+  })
   test('migrates a version-one consumer table and binds its namespace', async () => {
     const root = await mkdtemp(join(tmpdir(), 'sidecar-v1-')), dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const path = join(dir, 'db')
     const legacy = new Database(path, { create: true }); legacy.exec(`
@@ -81,5 +88,13 @@ describe('SidecarStore', () => {
     const s = new SidecarStore(path); stores.push(s); s.bindSource('https://hapi.example', 'namespace')
     expect(s.db.query('SELECT version FROM schema_meta').get()).toEqual({ version: 2 })
     expect(s.db.query("SELECT namespace_hash FROM consumers WHERE id='legacy'").get()).toEqual({ namespace_hash: 'namespace' })
+  })
+  test('produces a content-free keyed shadow report grouped by kind and session', async () => {
+    const s = await store(); s.bindSource('https://hapi.example', 'ns')
+    s.append({ sourceKey: 'one', event: event({ sessionId: 'private-session', sessionName: 'Secret title', body: 'Secret body' }) }, '1', [])
+    s.append({ sourceKey: 'two', event: event({ eventId: '22222222-2222-4222-8222-222222222222', sessionId: 'private-session', sessionName: 'Secret title', body: 'Another secret' }) }, '2', [])
+    const report = s.shadowReport(new TextEncoder().encode('a'.repeat(32))), encoded = JSON.stringify(report)
+    expect(report).toMatchObject({ version: 1, highWaterSeq: 2, observations: [{ kind: 'ready', count: 2 }] })
+    expect(report.observations[0]?.sessionFingerprint).toMatch(/^[0-9a-f]{64}$/); expect(encoded).not.toContain('private-session'); expect(encoded).not.toContain('Secret')
   })
 })

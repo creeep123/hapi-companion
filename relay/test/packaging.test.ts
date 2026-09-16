@@ -23,4 +23,8 @@ describe('Linux installer validation', () => {
     expect(unit).toContain('HAPI_MOBILE_RELAY_HOST=127.0.0.1'); expect(unit).toContain('ProtectSystem=strict')
     expect(unit).not.toContain('ACCESS_TOKEN=')
   })
+  test('Sidecar installer refuses an active upgrade and never performs binary-only automatic rollback', async () => {
+    const source = await Bun.file(sidecarInstaller).text()
+    expect(source).toContain('active Sidecar upgrade refused'); expect(source).not.toContain('systemctl restart hapi-companion-sidecar'); expect(source).not.toContain('rolling back')
+  })
 })

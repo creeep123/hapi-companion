@@ -8,7 +8,7 @@ import { SidecarSourceEngine } from '../src/sidecar-source'
 import { SidecarStore } from '../src/sidecar-store'
 
 const stores: SidecarStore[] = []
-async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Promise<void> = async () => { throw new DOMException('aborted', 'AbortError') }) { const root = await mkdtemp(join(tmpdir(), 'source-')); const dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const store = new SidecarStore(join(dir, 'db')); stores.push(store); store.bindSource('https://hapi.example', 'ns'); const credential = store.createConsumer('mac'); const broker = new ConsumerBroker(store); return { store, credential, engine: new SidecarSourceEngine(store, new EventInterpreter('https://hapi.example', 'ns', () => 20_000), broker, client, sleep) } }
+async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Promise<void> = async () => { throw new DOMException('aborted', 'AbortError') }, targetKinds: Array<'mac' | 'ntfy'> = ['mac', 'ntfy']) { const root = await mkdtemp(join(tmpdir(), 'source-')); const dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const store = new SidecarStore(join(dir, 'db')); stores.push(store); store.bindSource('https://hapi.example', 'ns'); const credential = store.createConsumer('mac'); const broker = new ConsumerBroker(store); return { store, credential, engine: new SidecarSourceEngine(store, new EventInterpreter('https://hapi.example', 'ns', () => 20_000), broker, client, sleep, () => {}, targetKinds) } }
 afterEach(() => { while (stores.length) stores.pop()!.close() })
 
 describe('SidecarSourceEngine', () => {
@@ -73,5 +73,26 @@ describe('SidecarSourceEngine', () => {
     const { store, credential, engine } = await setup(client, async () => {}); engine.start()
     for (let i = 0; i < 30 && store.sourceCursor() !== 'event:1'; i++) await Bun.sleep(5)
     expect(store.sourceCursor()).toBe('event:1'); expect(store.pending(credential.consumerId)).toEqual([]); await engine.stop()
+  })
+  test('serializes durable cutover between source commits so no post-cutover event is shadowed', async () => {
+    let catalogStarted!: () => void, releaseCatalog!: () => void, releaseSecond!: () => void
+    const catalogSeen = new Promise<void>(resolve => { catalogStarted = resolve }), catalogHold = new Promise<void>(resolve => { releaseCatalog = resolve }), secondHold = new Promise<void>(resolve => { releaseSecond = resolve })
+    const client = {
+      catalog: async () => { catalogStarted(); await catalogHold; return [{ id: 's1', active: true }] },
+      session: async () => ({ id: 's1', active: true }),
+      messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'ok' } }; yield { type: 'event', frame: { id: 'before', event: { type: 'session-ended', sessionId: 's1', reason: 'completed' } } }
+        await secondHold; yield { type: 'event', frame: { id: 'after', event: { type: 'session-ended', sessionId: 's1', reason: 'completed' } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, credential, engine } = await setup(client, async () => { throw new DOMException('aborted', 'AbortError') }, [])
+    const initial = new EventInterpreter('https://hapi.example', 'ns', () => 20_000); initial.baseline([{ id: 's1', active: true }]); store.commitBaseline([{ id: 's1', active: true }], initial.exportState())
+    engine.start(); await catalogSeen
+    let cutoverCommitted = false; const cutover = engine.activateDelivery(async () => { cutoverCommitted = true })
+    await Bun.sleep(5); expect(cutoverCommitted).toBeFalse(); releaseCatalog(); await cutover; expect(store.pending(credential.consumerId)).toEqual([])
+    releaseSecond(); for (let i = 0; i < 30 && store.sourceCursor() !== 'after'; i++) await Bun.sleep(5)
+    expect(store.sourceCursor()).toBe('after'); expect(store.pending(credential.consumerId)).toHaveLength(1); await engine.stop()
   })
 })

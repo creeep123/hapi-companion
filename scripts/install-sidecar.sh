@@ -18,6 +18,10 @@ BASE=/opt/hapi-mobile-relay; INSTALL_DIR="$(realpath -m "$BASE/$VERSION")"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"; UNIT_SOURCE="$(realpath "$SCRIPT_DIR/hapi-companion-sidecar.service")"
 [[ "$UNIT_SOURCE" == "$SCRIPT_DIR/"* ]] || { echo "unit path escaped bundle" >&2; exit 2; }
 id hapi-mobile-relay >/dev/null 2>&1 || useradd --system --home /var/lib/hapi-mobile-relay --shell /usr/sbin/nologin hapi-mobile-relay
+if systemctl is-active --quiet hapi-companion-sidecar; then
+  echo "active Sidecar upgrade refused; create and verify the schema-matched backup, stop the service, then rerun" >&2
+  exit 1
+fi
 install -d -o hapi-mobile-relay -g hapi-mobile-relay -m 0700 /var/lib/hapi-mobile-relay
 install -d -o root -g root -m 0755 "$INSTALL_DIR"
 install -o root -g root -m 0755 "$ARTIFACT" "$INSTALL_DIR/hapi-mobile-relay"
@@ -25,13 +29,5 @@ install -o root -g root -m 0644 "$UNIT_SOURCE" /etc/systemd/system/hapi-companio
 PREVIOUS="$(readlink "$BASE/current" 2>/dev/null || true)"
 ln -sfn "$INSTALL_DIR" "$BASE/.current-$VERSION"; mv -Tf "$BASE/.current-$VERSION" "$BASE/current"
 systemctl daemon-reload
-if systemctl is-active --quiet hapi-companion-sidecar; then
-  if ! systemctl restart hapi-companion-sidecar || ! curl -fsS --max-time 10 http://127.0.0.1:8789/health | grep -q '"ok":true'; then
-    echo "candidate failed health; rolling back" >&2
-    if [[ -n "$PREVIOUS" ]]; then ln -sfn "$PREVIOUS" "$BASE/current"; systemctl restart hapi-companion-sidecar; curl -fsS --max-time 10 http://127.0.0.1:8789/health | grep -q '"ok":true' || { echo "CRITICAL: rollback health failed" >&2; exit 1; }; else systemctl stop hapi-companion-sidecar; fi
-    exit 1
-  fi
-  echo "upgraded and restarted hapi-companion-sidecar $VERSION" >&2
-else
-  echo "installed only; create the credential/environment files, inspect them, then enable shadow mode explicitly" >&2
-fi
+if [[ -n "$PREVIOUS" ]]; then echo "installed inactive upgrade candidate; restore the verified backup with its prior binary if acceptance fails" >&2
+else echo "installed only; create the credential/environment files, inspect them, then enable shadow mode explicitly" >&2; fi

@@ -12,6 +12,7 @@ export class SidecarSourceEngine {
   private task?: Promise<void>
   private baselineReady = false
   private deliveryKinds: ConsumerKind[]
+  private mutationTail: Promise<void> = Promise.resolve()
   constructor(
     private readonly store: SidecarStore,
     private readonly interpreter: EventInterpreter,
@@ -22,6 +23,9 @@ export class SidecarSourceEngine {
     targetKinds: ConsumerKind[] = ['mac', 'ntfy']
   ) { this.deliveryKinds = [...targetKinds] }
   setDeliveryActive(active: boolean) { this.deliveryKinds = active ? ['mac', 'ntfy'] : [] }
+  async activateDelivery(commit: () => Promise<void>) {
+    await this.exclusive(async () => { if (!this.isLive()) throw new Error('official_source_not_live'); await commit(); this.setDeliveryActive(true) })
+  }
   isLive() { return this.store.sourceStatus().state === 'live' }
   start() { if (!this.task) { this.controller = new AbortController(); const task = this.run(this.controller.signal); this.task = task; task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined) } }
   async stop() { this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined }
@@ -54,9 +58,9 @@ export class SidecarSourceEngine {
     const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
     const pump = this.pump(iterator, queue, activeSignal)
     try {
-      if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.resync(activeSignal)
+      if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
       this.store.sourceHealth('live')
-      for await (const item of queue.items(activeSignal)) await this.apply(item, activeSignal)
+      for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
       await pump
     } catch (error) { queue.throwIfFailed(); throw error }
     finally { local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined) }
@@ -142,6 +146,13 @@ export class SidecarSourceEngine {
     this.broker.signal(); if (candidates.length) this.onEvent()
   }
   private async refreshCatalog(signal: AbortSignal) { return (await this.client.catalog(signal)).map(catalogItem) }
+  private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.mutationTail
+    let release!: () => void
+    this.mutationTail = new Promise<void>(resolve => { release = resolve })
+    await previous
+    try { return await operation() } finally { release() }
+  }
 }
 
 function catalogItem(item: OfficialSessionSummary) { return { id: item.id, title: item.metadata?.name ?? item.title, updatedAt: item.updatedAt, active: item.active, machineName: item.metadata?.machineId ?? item.machineId } }

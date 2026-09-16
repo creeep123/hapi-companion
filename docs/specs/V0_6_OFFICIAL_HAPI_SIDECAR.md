@@ -30,7 +30,7 @@ This version does not remove the current HAPI patch from production. It creates,
 
 - Official HAPI keeps SSE replay only in process memory, currently bounded to 256 events or 2 MiB. Its process epoch changes on restart. If a transient notification is born and disappears while that history is unavailable, the Sidecar may miss it.
 - A known pending input/permission request can be recovered from a session snapshot. A completed session cannot always be distinguished from an abort after a gap, so the Sidecar prefers a missed completion to a false completion.
-- Notification semantics rely on official event and session shapes that are public application APIs but not yet a dedicated stable notification contract. Every HAPI upgrade must pass the black-box compatibility gate in section 15.
+- Notification semantics rely on official event and session shapes that are public application APIs but not yet a dedicated stable notification contract. Every HAPI upgrade must pass the composite compatibility and deployment gates in section 15.
 - The official API has no notification-only credential. The Sidecar therefore needs a namespace-scoped HAPI CLI access token on the VM.
 
 ## 4. Official HAPI extension surface
@@ -330,11 +330,11 @@ V2 ntfy activation maps the existing receiver installation ID, topic secret, pol
 
 ### Phase A: local and integration validation
 
-Run the complete test matrix against a clean official HAPI v0.30.7 checkout. No production change.
+Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. Real Runner-generated semantics remain a shadow gate because they require an operating Hub/Runner workload.
 
 ### Phase B: production shadow
 
-After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. Compare hashed semantic observations with the current patched stream for real ready, completion, task, permission and input flows. Never enable a second ntfy dispatcher.
+After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. Compare its counts and fingerprint with one controlled canary sequence and the current patched stream for real ready, completion, task, permission and input flows. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
 
 ### Phase C: cutover
 
@@ -439,7 +439,7 @@ Release acceptance records measured idle/load values and verifies journal bounds
 
 ### 15.6 HAPI upgrade gate
 
-Every candidate official HAPI version must run a black-box suite covering auth, namespace isolation, catalog/detail/messages schemas, connected/resume behavior, replay/gap, the five semantic fixtures and exact URL construction. HAPI can upgrade without a Sidecar release when this gate passes. A failure blocks that HAPI upgrade until the adapter is updated and reviewed.
+Every candidate official HAPI version must run the composite compatibility suite: a real-process black-box check for auth, namespace identity, catalog and connected SSE; the upstream version's own route tests for detail/messages schemas, pagination, namespace isolation and replay/gap; and Sidecar fixtures for the five semantic shapes and exact URL construction. A production upgrade additionally requires shadow observation of real Runner-generated events. HAPI can upgrade without a Sidecar release only when the local suite and the required deployment gate pass. A failure blocks that HAPI upgrade until the adapter is updated and reviewed.
 
 ## 16. Acceptance criteria
 
