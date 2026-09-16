@@ -38,7 +38,17 @@ Start with `HAPI_SIDECAR_DELIVERY_MODE=shadow`. Shadow mode records semantic obs
 4. Hub restart produces a documented gap resync;
 5. RSS, CPU, database/WAL size and reconnect behavior remain within the V0.6 budget.
 
-Create a temporary root-owned mode-`0600` comparison key with at least 32 random bytes. Run `hapi-mobile-relay sidecar-shadow-report <absolute-key-file>` locally on the VM after each controlled canary sequence. The report contains only event kind, count, high-water sequence and an HMAC-SHA256 session fingerprint; it excludes session IDs, titles, bodies, topics and credentials. Trigger the five kinds in one known canary session, compare the reported kind counts and common session fingerprint with the expected sequence and the concurrently observed patched notifications, then securely discard the temporary key and report after recording the pass/fail result. Never send either file through chat or logs.
+Create a temporary comparison key with at least 32 random bytes inside `/var/lib/hapi-companion-sidecar`, owned by `hapi-mobile-relay` and mode `0600`. Run the report as that same service user, with the unit's private paths explicitly supplied:
+
+```text
+sudo -u hapi-mobile-relay env \
+  HAPI_MOBILE_RELAY_STATE=/var/lib/hapi-companion-sidecar/state.json \
+  HAPI_SIDECAR_DB=/var/lib/hapi-companion-sidecar/sidecar.sqlite \
+  /opt/hapi-companion-sidecar/current/hapi-mobile-relay \
+  sidecar-shadow-report /var/lib/hapi-companion-sidecar/shadow-report.key
+```
+
+The report contains only event kind, count, high-water sequence and an HMAC-SHA256 session fingerprint; it excludes session IDs, titles, bodies, topics and credentials. Trigger the five kinds in one known canary session, compare the reported kind counts and common session fingerprint with the expected sequence and the concurrently observed patched notifications, then delete the temporary key and report after recording the pass/fail result. Never send either file through chat or logs.
 
 ## Authorized cutover
 
