@@ -1,9 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-16
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. The VM was switched to patched HAPI v0.30.7 with schema v27 on 2026-09-15, but Linux Codex shared sessions fail during WebSocket-over-Unix-socket initialization. A minimal cumulative-patch hotfix keeps Darwin on Unix sockets and moves Linux to authenticated loopback TCP. Production stays on its current binary until Safe Updater accepts and deploys a new candidate.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. V0.6 is now in design review: a Companion-owned Sidecar will consume official HAPI REST/SSE so future HAPI packages do not require the local notification patch. Production remains unchanged while this replacement is implemented and shadow-verified.
+
+## Active architecture migration — V0.6 official-HAPI Sidecar
+
+The product owner accepted the narrow reliability tradeoff: an abnormal HAPI restart may hide a transient notification that starts and disappears while HAPI's in-memory replay is unavailable. Normal operation remains live over one SSE; after the Sidecar observes an event, it persists it and gives Mac and Android independent delivery cursors, so either endpoint can fail without blocking the other. The VM keeps the HAPI credential; clients receive scoped Sidecar credentials. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -51,7 +55,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 |---|---|---|---|
 | Product | Green | Native banner, bundled sound, and exact-session click path are implemented | Preserve the deliberately narrow scope |
 | macOS client | Green | v0.3.1 universal app; 47 tests pass; real in-app upgrade and current Mac runtime verified | Preserve URL-origin and delivery guarantees |
-| Hub transport | Red | Companion endpoints pass on production v0.30.7, but all Linux Codex shared spawns time out; local hotfix tests pass on Darwin | Pin the hotfix, run the real Linux app-server gate and controlled VM recovery through Safe Updater |
+| Hub transport | Green | Patched v0.30.7/schema-v27 and the Linux loopback-TCP fix passed production Hub, Runner and Companion contract gates | Preserve current production while V0.6 is developed |
 | Installation | Green | Fresh GitHub clone passed doctor and all tests; local installer is documented | Verify full install on a second Mac/account before signed binary release |
 | Brand | Green | Signal Buddy approved; SVG/PNG/ICNS/menu-bar assets, tokens, guidelines, manifest, and checksums exist | Maintain assets through the generator |
 | Distribution | Yellow | v0.3.1 has verified universal ad-hoc app, brand package, Hub patch, and checksums | Developer ID signing/notarization remains future work |
@@ -74,7 +78,7 @@ Completed in v0.3.1: open “声音与设置” for the version number, “检�
 ### Out of scope
 
 - a replacement HAPI client or runner;
-- SQLite or HTTP polling;
+- HTTP polling;
 - a replacement mobile HAPI client;
 - Chrome/Safari PWA-window automation in the initial release;
 - a hosted relay service;
@@ -126,7 +130,8 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.1 clean-machine install | In progress | fresh clone already builds; an agent performs the full install on a second environment without undocumented knowledge |
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
-| HAPI 0.30.7 compatibility | In progress | immutable patch is pinned by updater; clean Linux candidate, VM gates and rollback evidence pass |
+| HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
+| V0.6 official-HAPI Sidecar | Design review | complete design is reviewed; clean official HAPI integration and independent Mac/mobile delivery pass before any production migration |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -135,7 +140,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 2. **Transport:** durable SSE + explicit ACK, not a timer-based poller.
 3. **Credential model:** device-scoped Keychain token after initial CLI-authenticated pairing.
 4. **Navigation:** event URL is authoritative; discover the Edge PWA dynamically by Hub origin.
-5. **Hub integration:** ship a documented patch while keeping local deployment details outside the generic project.
+5. **Hub integration:** keep the documented patch as the current production path while V0.6 moves notification observation to an external Sidecar over official APIs.
 6. **License:** AGPL-3.0 to remain compatible with the included HAPI-derived integration.
 7. **Brand direction:** Signal Buddy — a minimal coral task-complete pager character with a bell clapper and mint completion sparkle.
 
@@ -168,7 +173,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release |
+| signed/notarized release | clean-machine install | V0.6 official-HAPI Sidecar | V0.6 technical design | v0.1.0 source-first release |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting
