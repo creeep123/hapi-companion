@@ -13,6 +13,10 @@ export class SidecarSourceEngine {
   private baselineReady = false
   private deliveryKinds: ConsumerKind[]
   private mutationTail: Promise<void> = Promise.resolve()
+  private pendingCursor?: string
+  private pendingCursorCount = 0
+  private pendingCatalogTouches = new Map<string, number>()
+  private lastCursorFlushAt = 0
   constructor(
     private readonly store: SidecarStore,
     private readonly interpreter: EventInterpreter,
@@ -58,12 +62,16 @@ export class SidecarSourceEngine {
     const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
     const pump = this.pump(iterator, queue, activeSignal)
     try {
+      if (first.value.connected.resume === 'gap') this.discardPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
       this.store.sourceHealth('live')
       for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
       await pump
     } catch (error) { queue.throwIfFailed(); throw error }
-    finally { local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined) }
+    finally {
+      local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined)
+      await this.exclusive(async () => this.flushPendingCursor())
+    }
   }
 
   private async pump(iterator: AsyncIterator<OfficialStreamItem>, queue: BoundedEventQueue, signal: AbortSignal) {
@@ -122,9 +130,12 @@ export class SidecarSourceEngine {
     if (!id) throw new OfficialHapiError('contract_invalid', true)
     if (event.type === 'session-updated' && event.sessionId && !this.interpreter.sessionPatchNeedsRefresh(event.sessionId, event.data)) {
       const updatedAt = event.data && typeof event.data === 'object' && Number.isSafeInteger((event.data as any).updatedAt) ? Number((event.data as any).updatedAt) : undefined
-      this.store.advanceCursor(id, updatedAt === undefined ? undefined : { sessionId: event.sessionId, updatedAt })
+      this.pendingCursor = id; this.pendingCursorCount++
+      if (updatedAt !== undefined) this.pendingCatalogTouches.set(event.sessionId, updatedAt)
+      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 1_000) this.flushPendingCursor()
       return
     }
+    this.flushPendingCursor()
     const before = this.interpreter.exportState()
     let candidates, catalog: ReturnType<typeof catalogItem>[] | undefined
     if ((event.type === 'session-added' || event.type === 'session-updated') && event.sessionId) {
@@ -150,6 +161,14 @@ export class SidecarSourceEngine {
     catch (error) { this.interpreter.restoreState(before); throw error }
     this.broker.signal(); if (candidates.length) this.onEvent()
   }
+  private flushPendingCursor() {
+    if (!this.pendingCursor) return
+    const cursor = this.pendingCursor
+    const touches = [...this.pendingCatalogTouches].map(([sessionId, updatedAt]) => ({ sessionId, updatedAt }))
+    this.store.advanceCursor(cursor, touches)
+    this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear(); this.lastCursorFlushAt = Date.now()
+  }
+  private discardPendingCursor() { this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear() }
   private async refreshCatalog(signal: AbortSignal) { return (await this.client.catalog(signal)).map(catalogItem) }
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.mutationTail
