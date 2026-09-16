@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-16
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. V0.6 now has an implementation candidate: a Companion-owned Sidecar consumes official HAPI REST/SSE so future HAPI packages do not require the local notification patch. Its first independent implementation review found blocking durability, cutover and flow-control defects; those fixes and their failure tests are now implemented, and final rereview is pending. Production remains unchanged until separately authorized shadow and real-device acceptance.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. V0.6 now has a reviewed implementation candidate: a Companion-owned Sidecar consumes official HAPI REST/SSE so future HAPI packages do not require the local notification patch. The final independent review is READY with no P0/P1 findings after durability, cutover, flow-control, deployment-isolation and permission fixes. Production remains unchanged until separately authorized shadow and real-device acceptance.
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
@@ -131,7 +131,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
-| V0.6 official-HAPI Sidecar | Final implementation review | clean official v0.30.7 auth/catalog/SSE gate, durable recovery, independent consumers, Mac probe-first migration and Linux candidate package pass; shadow plus real Mac/OPPO remain production gates |
+| V0.6 official-HAPI Sidecar | Awaiting production shadow authorization | clean official v0.30.7 auth/catalog/SSE gate, durable recovery, independent consumers, Mac probe-first migration, Linux candidate package and independent review pass; shadow plus real Mac/OPPO remain production gates |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -175,7 +175,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed/notarized release | clean-machine install | — | V0.6 official-HAPI Sidecar | v0.1.0 source-first release |
+| signed/notarized release | clean-machine install; V0.6 production shadow authorization | — | — | v0.1.0 source-first release; V0.6 implementation candidate |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting

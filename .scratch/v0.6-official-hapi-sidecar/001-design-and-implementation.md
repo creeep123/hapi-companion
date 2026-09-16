@@ -1,6 +1,6 @@
 # V0.6 official-HAPI Sidecar
 
-Status: implementation candidate under final independent review
+Status: implementation and independent review complete; production shadow authorization pending
 
 ## Outcome
 
@@ -30,19 +30,20 @@ The product owner accepts that an official HAPI restart may hide a transient eve
 - [x] Inspect official HAPI v0.30.7 REST/SSE behavior.
 - [x] Inspect existing Mac and Mobile Relay coupling.
 - [x] Draft complete technical specification and ADR.
-- [ ] Resolve independent architecture/security/client review findings; initial review findings are implemented and final re-review is pending.
+- [x] Resolve independent architecture/security/client review findings; final review at `61cda4de3bab925e0f30ba33bedc9719f948d4ec` is READY with no P0/P1 findings.
 - [x] Implement official source adapter and fixtures.
 - [x] Implement interpreter and gap reconciliation.
 - [x] Implement durable store and independent consumers.
 - [x] Migrate Mac transport binding without losing settings.
 - [x] Complete unit, component, failure and clean-HAPI integration gates.
 - [x] Update operations, rollback, upgrade and patch-retirement documentation.
-- [ ] Prepare a clean, reviewable candidate; do not deploy without explicit approval.
+- [x] Prepare a clean, reviewable candidate; do not deploy without explicit approval.
 
 ## Current evidence
 
 - Clean official HAPI checkout: `0239edf38e2da653d662f31039e24ccea04c7837`; 116 upstream route/replay/namespace tests and the real auth/namespace/catalog/SSE process gate pass.
-- Relay: 147 tests plus TypeScript pass after the second review fixes, including serialized cutover, auxiliary SQLite path rejection and content-free shadow reporting.
+- Relay: 148 tests plus TypeScript pass after the final review fixes, including serialized cutover, auxiliary SQLite path rejection, content-free shadow reporting and its service-user permission model.
 - Mac: 75 tests pass; probe-before-save, failed-probe rollback and replaced-consumer revocation are covered.
-- Candidate bundle: `0.6.0-alpha.1`; Linux x64 package smoke passes. Local candidate evidence: archive SHA-256 `c33db39459fb413f7bd318580dae0e15150d5323c89b8fcfee352c905f4afae6`, binary SHA-256 `b030b609e9fc3da2a7cc407068e75467a6977b7aad562ad7135d0a9f48a75057`.
+- Candidate bundle: `0.6.0-alpha.1`; Linux x64 package smoke passes. Local candidate evidence: archive SHA-256 `9a24dfdde9e8d318440ea9d52c4adc6734d4f67706acd32d89e36fc7f6b06365`, binary SHA-256 `b030b609e9fc3da2a7cc407068e75467a6977b7aad562ad7135d0a9f48a75057`.
+- Independent final review: READY, P0/P1 zero. It confirms the Sidecar is isolated from the live Relay and that the shadow report can run under the deployed ownership model without exposing notification content or credentials.
 - Production remains on the patched path. Real Mac/OPPO and shadow comparison require separately authorized deployment.
