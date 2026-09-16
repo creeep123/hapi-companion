@@ -48,6 +48,19 @@ export class EventInterpreter {
       ? { epoch: value.messageEpoch, at: value.messageAt, seq: value.messageSeq } : undefined
   }
 
+  sessionPatchNeedsRefresh(sessionId: string, data: unknown): boolean {
+    const snapshot = this.snapshots.get(sessionId)
+    if (!snapshot || !isObject(data)) return true
+    const ignored = new Set(['updatedAt', 'activeAt', 'collaborationMode', 'effort', 'model', 'modelReasoningEffort', 'permissionMode', 'serviceTier'])
+    const compared = new Set(['active', 'thinking', 'activeTurnStartedAt'])
+    for (const [key, value] of Object.entries(data)) {
+      if (ignored.has(key)) continue
+      if (compared.has(key)) { if ((snapshot.session as Record<string, unknown>)[key] !== value) return true; continue }
+      return true
+    }
+    return false
+  }
+
   baselineMessages(sessionId: string, page: OfficialMessagesPage): void {
     const snapshot = this.snapshots.get(sessionId); if (!snapshot) return
     snapshot.messageEpoch = page.page.epoch
@@ -220,7 +233,6 @@ function persistedSession(session: OfficialSession): OfficialSession {
     ...(session.active !== undefined ? { active: session.active } : {}),
     ...(session.thinking !== undefined ? { thinking: session.thinking } : {}),
     ...(session.activeTurnStartedAt !== undefined ? { activeTurnStartedAt: session.activeTurnStartedAt } : {}),
-    ...(session.updatedAt !== undefined ? { updatedAt: session.updatedAt } : {}),
     ...(session.machineId !== undefined ? { machineId: session.machineId } : {}),
     ...(session.metadata ? { metadata: {
       ...(session.metadata.name !== undefined ? { name: session.metadata.name } : {}),

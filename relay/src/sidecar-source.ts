@@ -120,6 +120,11 @@ export class SidecarSourceEngine {
   private async apply(item: Extract<OfficialStreamItem, { type: 'event' }>, signal: AbortSignal) {
     const { id, event } = item.frame
     if (!id) throw new OfficialHapiError('contract_invalid', true)
+    if (event.type === 'session-updated' && event.sessionId && !this.interpreter.sessionPatchNeedsRefresh(event.sessionId, event.data)) {
+      const updatedAt = event.data && typeof event.data === 'object' && Number.isSafeInteger((event.data as any).updatedAt) ? Number((event.data as any).updatedAt) : undefined
+      this.store.advanceCursor(id, updatedAt === undefined ? undefined : { sessionId: event.sessionId, updatedAt })
+      return
+    }
     const before = this.interpreter.exportState()
     let candidates, catalog: ReturnType<typeof catalogItem>[] | undefined
     if ((event.type === 'session-added' || event.type === 'session-updated') && event.sessionId) {

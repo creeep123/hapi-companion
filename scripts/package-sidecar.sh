@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"; TARGET="${1:-bun-linux-x64}"; VERSION="${SIDECAR_VERSION:-0.6.0-alpha.2}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"; TARGET="${1:-bun-linux-x64}"; VERSION="${SIDECAR_VERSION:-0.6.0-alpha.3}"
 case "$TARGET" in bun-linux-x64) ARCH=x86_64;; bun-linux-arm64) ARCH=aarch64;; *) echo "unsupported target: $TARGET" >&2; exit 2;; esac
 cd "$ROOT/relay"; bun install --frozen-lockfile; bun run typecheck; bun test
 mkdir -p dist/sidecar-bundle
