@@ -51,7 +51,7 @@ export class EventInterpreter {
   sessionPatchNeedsRefresh(sessionId: string, data: unknown): boolean {
     const snapshot = this.snapshots.get(sessionId)
     if (!snapshot || !isObject(data)) return true
-    const ignored = new Set(['updatedAt', 'activeAt', 'collaborationMode', 'effort', 'model', 'modelReasoningEffort', 'permissionMode', 'serviceTier'])
+    const ignored = new Set(['updatedAt', 'activeAt', 'collaborationMode', 'copilotAgentMode', 'effort', 'model', 'modelReasoningEffort', 'permissionMode', 'serviceTier'])
     const compared = new Set(['active', 'thinking', 'activeTurnStartedAt'])
     for (const [key, value] of Object.entries(data)) {
       if (ignored.has(key)) continue

@@ -7,7 +7,7 @@ describe('EventInterpreter', () => {
   test('filters session patches that cannot change notification semantics', () => {
     const i = new EventInterpreter('https://hapi.example', 'ns', () => 20_000)
     i.baseline([session({ active: true, thinking: true, activeTurnStartedAt: 10_000 })])
-    expect(i.sessionPatchNeedsRefresh('s/1', { updatedAt: 20_000, model: 'new-model', thinking: true, activeTurnStartedAt: 10_000 })).toBeFalse()
+    expect(i.sessionPatchNeedsRefresh('s/1', { updatedAt: 20_000, model: 'new-model', copilotAgentMode: 'plan', thinking: true, activeTurnStartedAt: 10_000 })).toBeFalse()
     expect(i.sessionPatchNeedsRefresh('s/1', { thinking: false })).toBeTrue()
     expect(i.sessionPatchNeedsRefresh('s/1', { agentState: { version: 2, value: {} } })).toBeTrue()
     expect(i.sessionPatchNeedsRefresh('s/1', { unknownFutureField: true })).toBeTrue()
