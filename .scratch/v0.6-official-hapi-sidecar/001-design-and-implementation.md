@@ -1,6 +1,6 @@
 # V0.6 official-HAPI Sidecar
 
-Status: implementation and independent review complete; production shadow authorization pending
+Status: production shadow active; semantic comparison and restart/resource soak in progress
 
 ## Outcome
 
@@ -46,4 +46,6 @@ The product owner accepts that an official HAPI restart may hide a transient eve
 - Mac: 75 tests pass; probe-before-save, failed-probe rollback and replaced-consumer revocation are covered.
 - Candidate bundle: `0.6.0-alpha.2`; Linux x64 package smoke passes. Local candidate evidence: archive SHA-256 `f413662f41c8696844fff6c61081df1a5c63b94f950d386477b3b6e0ca2f5125`, binary SHA-256 `aa52daf95e269e7b246375384c53c957ae335c2e497cea0b6be9b1ab6f17fab1`.
 - Independent final review: READY, P0/P1 zero. It confirms the Sidecar is isolated from the live Relay and that the shadow report can run under the deployed ownership model without exposing notification content or credentials.
-- Production remains on the patched path. Real Mac/OPPO and shadow comparison require separately authorized deployment.
+- Production shadow was authorized and started on 2026-09-16 from canonical `main` `718ce34cddffda7d406854f9d938b907f7621e64`. The immutable alpha.2 archive/binary hashes are recorded above. It binds only to `127.0.0.1:8791`; the live Relay remains healthy on 8789 and the existing Nginx ingress retains 8790. No public Sidecar route or client binding was added.
+- The first alpha.1 start failed closed because Linux systemd exposes `LoadCredential` through a root-owned read-only 0550/0440 mount. The service was immediately stopped and disabled while the live Relay remained active. PR #27 added the narrowly scoped credential-mount check, independent review returned READY with no P0/P1, and alpha.2 then started successfully.
+- Initial production evidence: official source state `live`, schema 2, catalog snapshot present, source cursor present, zero restarts, real `ready` observations recorded, and zero delivery rows. Current memory was about 44 MB (63 MB observed peak), private Sidecar state occupied 4.3 MB, and existing Relay health passed. Five-kind semantic comparison, controlled gap/restart recovery and longer resource soak remain shadow gates before any cutover discussion.
