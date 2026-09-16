@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-16
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. The V0.6 Sidecar shadow is stopped after its historical-message gap scan exceeded the bounded pagination guard on a long session. Local alpha.8 removes that scan and passes local plus official-HAPI gates; independent review and one isolated/private shadow validation remain before any cutover discussion.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 removes unbounded historical-message gap scanning and is active only as a private shadow with zero delivery rows. Local, official-HAPI, independent-review, forced-gap, reconnect and real-ready parity gates pass; longer resource observation remains before any cutover discussion.
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepted the narrow reliability tradeoff: after an official SSE replay gap, any ready/task event outside available replay may be missed even if its message remains in history. Current pending input/permission requests are recovered from session state. Normal operation remains live over one SSE; after the Sidecar observes an event, it persists it and gives Mac and Android independent delivery cursors, so either endpoint can fail without blocking the other. The VM keeps the HAPI credential; clients receive scoped Sidecar credentials. Earlier alpha.4 shadow evidence showed two-hour ready-event parity and reduced steady resource use, but that shadow is no longer running. Alpha.8 is a local candidate pending the bounded isolated gate and one private shadow attempt. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+The product owner accepted the narrow reliability tradeoff: after an official SSE replay gap, any ready/task event outside available replay may be missed even if its message remains in history. Current pending input/permission requests are recovered from session state. Normal operation remains live over one SSE; after the Sidecar observes an event, it persists it and gives Mac and Android independent delivery cursors, so either endpoint can fail without blocking the other. The VM keeps the HAPI credential; clients receive scoped Sidecar credentials. Alpha.8 passed a copied-state 230-session forced gap, four 75-second idle/reconnect cycles and one real-ready comparison with the authoritative patched path; it now runs on private loopback in shadow mode while the legacy Relay remains the only delivery path. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -131,7 +131,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
-| V0.6 official-HAPI Sidecar | Local alpha.8 candidate | production shadow is stopped; the bounded gap-recovery fix passes local and official-HAPI gates, pending independent review and one isolated/private shadow validation |
+| V0.6 official-HAPI Sidecar | Private alpha.8 shadow active | bounded gap recovery and one real-ready parity check pass; collect resource evidence before any separately authorized cutover discussion |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -175,7 +175,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
-| signed/notarized release | clean-machine install | V0.6 alpha.8 independent review and isolated validation | — | v0.1.0 source-first release; V0.6 architecture/root-cause review |
+| signed/notarized release | clean-machine install | V0.6 alpha.8 private resource observation | — | v0.1.0 source-first release; V0.6 architecture/root-cause/forced-gap validation |
 | upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting

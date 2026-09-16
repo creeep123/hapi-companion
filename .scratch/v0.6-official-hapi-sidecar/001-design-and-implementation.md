@@ -1,6 +1,6 @@
 # V0.6 official-HAPI Sidecar
 
-Status: alpha.8 local candidate; production shadow stopped; independent re-review and one bounded validation pending
+Status: alpha.8 private production shadow active; delivery disabled; resource observation pending
 
 ## Outcome
 
@@ -44,9 +44,12 @@ The product owner accepts that after an official SSE replay gap, a ready/task ev
 - Clean official HAPI checkout: `0239edf38e2da653d662f31039e24ccea04c7837`; 116 upstream route/replay/namespace tests and the real auth/namespace/catalog/SSE process gate pass.
 - Relay: alpha.8 has 165 tests plus TypeScript passing, including zero-message gap recovery, request confirmation races, SSE-ID deduplication, atomic rollback, serialized cutover and bounded cursor batching.
 - Mac: 75 tests pass; probe-before-save, failed-probe rollback and replaced-consumer revocation are covered.
-- Candidate bundle: `0.6.0-alpha.8`; Linux x64 package smoke passes. Final hashes are recorded after the reviewed commit is packaged.
+- Candidate bundle: `0.6.0-alpha.8`; Linux x64 package smoke passes. Archive SHA-256 is `a22a11a0d1dbdb822f173bd394d8a00d52c4e420ff3af463beaf3fa15ad499fc`; binary SHA-256 is `a660d8042a1d56553e68c1ddaa14462cdaac75f6da1df14dee7725f4ecf0327b`.
 - Independent final review: READY, P0/P1 zero. It confirms the Sidecar is isolated from the live Relay and that the shadow report can run under the deployed ownership model without exposing notification content or credentials.
 - Historical production shadow ran alpha.4 on private loopback only. It is now stopped after alpha.7 exposed a bounded-pagination failure while reconciling a long session. The legacy Relay remains authoritative and healthy; no public Sidecar route or client binding was added.
+- Alpha.8 at implementation commit `02ca15b1bd39e2606766c870b413286fa404845d` passed two independent final reviews with P0/P1/P2 all zero. Relay typecheck and 165 tests pass; the clean official HAPI v0.30.7 gate retains 116 upstream tests plus the real auth/catalog/SSE handshake.
+- A copied-state isolated run recovered the real 230-session catalog from the former failing gap, cleared all legacy message watermarks, reached `live`, kept attention empty and produced zero delivery rows. Four consecutive 75-second idle/reconnect cycles stayed live with database integrity `ok` and the legacy Relay active.
+- The isolated run observed one new real `ready` event and matched it to the authoritative patched outbox for the same session/kind with a 4.620-second creation-time delta; only booleans/counts/timing were emitted. The reviewed alpha.8 package then started once as the private loopback shadow. It is live with schema 2, attention clear, zero restarts and zero delivery rows; the legacy Relay remains active on its original listener, and no public route or client binding was added.
 - The first alpha.1 start failed closed because Linux systemd exposes `LoadCredential` through a root-owned read-only 0550/0440 mount. The service was immediately stopped and disabled while the live Relay remained active. PR #27 added the narrowly scoped credential-mount check, independent review returned READY with no P0/P1, and alpha.2 then started successfully.
 - Earlier production evidence recorded source live, schema 2, ready observations, zero delivery rows, about 44 MB current RSS (63 MB peak), 4.3 MB private state and a healthy legacy Relay. Alpha.8 must now pass an isolated forced gap, four 75-second idle/reconnect cycles, one real ready comparison and one private shadow attempt before any cutover discussion; five naturally occurring kinds and a production Hub restart are not gates.
 - The production HMAC shadow-report command passed under the deployed service-user ownership model. Its output had version 1, a numeric high-water mark and only aggregate `ready` observations; forbidden content/credential field names were absent, and the temporary key/report were removed immediately.
