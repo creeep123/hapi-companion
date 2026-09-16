@@ -266,6 +266,7 @@ struct CompanionSettingsView: View {
             } else if !mobile.hasPhone {
                 Label("Relay 已配对", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 HStack {
+                    Button("Mac 使用 Sidecar") { Task { await mobile.connectMacThroughRelay() } }
                     Button("添加手机") { Task { await mobile.addPhone(preferences: model.settings.preferences) } }
                     Button("断开 Relay") { Task { await mobile.disconnectRelay() } }
                 }.disabled(mobile.busy)

@@ -65,3 +65,23 @@ An absent activation is returned as `null`; clients must retry the same activati
 - `POST /v1/unpair` performs receiver removal and revokes the management bearer. The response may be retried only after generating a new pairing code because the old bearer is no longer valid.
 
 Errors use `{ "error": "non-secret description" }`; revision conflicts also include `revision`. Configuration revision must equal `expectedRevision + 1`, and `receiverId` is immutable until removal. `401` means an invalid management bearer, `404` an unknown route, and `409` a revision, activation-fingerprint or immutable-binding conflict. Validation/provider errors use `400`; persisted readiness contains only enumerated safe error codes.
+
+## Sidecar API v2
+
+These management-token endpoints are available in `serve-sidecar` mode:
+
+- `GET /v2/status` returns `{version:2,source:{state,attentionCode?,updatedAt},delivery:{enabled,cutoverAt}}`. It contains no source token, consumer token or ntfy topic.
+- `POST /v2/consumers` with `{installationId,name,publicHapiOrigin}` returns `{consumerId,token,publicHapiOrigin,sidecarAPIOrigin,contractVersion:1}` once. The public origin must equal the VM-local source binding.
+- `DELETE /v2/consumers/:id` revokes one Mac consumer.
+- `PUT /v2/config` uses the v1 configuration/CAS envelope without any HAPI device credential.
+- `POST /v2/receivers/ntfy` with `{receiverId}` enables the internal ntfy consumer after configuration only when the official source is live and the process was started with the active-delivery ceiling. It commits a durable cutover timestamp before opening delivery.
+
+Patched-Hub `/v1/activate` and `/v1/repair` return `409 client_upgrade_required` in Sidecar mode. Official HAPI source credentials are VM-local only.
+
+Mac consumer data plane uses the issued bearer plus `X-Hapi-Device-Id`:
+
+- `GET /companion/sessions` returns contract version 1 catalog and `turnDuration` capability.
+- `GET /companion/events` starts with `event: connected` / `data: {}`, then ordered `notification` frames with decimal Sidecar sequence IDs.
+- `POST /companion/ack` accepts the exact next `{seq,eventId}`; a mismatch is `409`.
+- `GET /companion/status` returns only replay bounds and high-water state.
+- `DELETE /companion/consumer` self-revokes the credential.

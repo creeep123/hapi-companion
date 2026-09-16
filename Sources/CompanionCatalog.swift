@@ -12,6 +12,7 @@ struct CompanionCatalog: Decodable, Sendable {
     struct Capabilities: Decodable, Sendable {
         let turnDuration: Bool
     }
+    let version: Int
     let sessions: [CompanionSession]
     let capabilities: Capabilities
 }

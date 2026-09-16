@@ -21,6 +21,10 @@ struct CompanionCredential: Codable, Sendable {
     let hubURL: URL
     let deviceId: String
     let token: String
+    var publicHubURL: URL? = nil
+    var transportVersion: Int? = nil
+
+    var deliveryHubURL: URL { publicHubURL ?? hubURL }
 }
 
 

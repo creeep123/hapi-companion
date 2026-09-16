@@ -56,6 +56,7 @@ export class RelayManager {
       }
       if (!s.config || s.config.revision !== input.revision) throw new ConflictError(s.config?.revision ?? 0)
       s.credential = { deviceId: input.deviceId, token: input.token }
+      s.sourceMode = 'patchedHub'
       s.activation = { activationId: input.activationId, installationId: input.installationId, status: 'committed', deviceId: input.deviceId, requestFingerprint: fingerprint }
       s.enabled = true; s.paused = false; s.health.stream = 'connecting'
     })
@@ -70,11 +71,15 @@ export class RelayManager {
     })
     await this.engine.start()
   }
-  async pause(paused: boolean): Promise<void> { await this.store.update(s => { if (!s.activation) throw new Error('not activated'); s.paused = paused }); await this.engine.start() }
-  async resume(): Promise<void> { const s = await this.store.load(); if (!s.enabled || !s.activation) throw new Error('not activated'); await this.engine.restart() }
+  async activateOfficial(receiverId: string, sourceReady: () => boolean = () => true, withCutover: (commit: () => Promise<void>) => Promise<void> = async commit => { await commit() }): Promise<void> {
+    if (!sourceReady()) throw new Error('official_source_not_live')
+    await withCutover(() => this.store.update(s => { if (!s.config || s.config.receiverId !== receiverId) throw new Error('not configured'); s.sourceMode = 'officialHapi'; s.officialCutoverAt = this.now(); s.enabled = true; s.paused = false; delete s.credential; delete s.activation; s.health.stream = 'connected'; delete s.health.attentionCode }))
+  }
+  async pause(paused: boolean): Promise<void> { await this.store.update(s => { if (!s.activation && s.sourceMode !== 'officialHapi') throw new Error('not activated'); s.paused = paused }); await this.engine.start() }
+  async resume(): Promise<void> { const s = await this.store.load(); if (!s.enabled || (!s.activation && s.sourceMode !== 'officialHapi')) throw new Error('not activated'); await this.engine.restart() }
   async remove(): Promise<void> {
     await this.engine.stop()
-    await this.store.update(s => { s.enabled = false; s.paused = false; delete s.config; delete s.credential; delete s.activation; s.handled = {}; s.health = { stream: 'stopped' } })
+    await this.store.update(s => { s.enabled = false; s.paused = false; delete s.config; delete s.credential; delete s.activation; delete s.sourceMode; delete s.officialCutoverAt; s.handled = {}; s.health = { stream: 'stopped' } })
   }
   async unpair(): Promise<void> { await this.remove(); await this.store.update(s => { delete s.managementTokenHash; delete s.bootstrap }) }
 }

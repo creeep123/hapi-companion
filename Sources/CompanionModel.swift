@@ -39,6 +39,7 @@ final class CompanionModel {
         settings = ReminderSettingsStore(defaults: defaults)
         mobile = MobileNotificationController(
             defaults: defaults,
+            sidecarReady: { await service.reconnect() },
             registerDevice: { try await service.registerRelay(installationId: $0, name: $1) },
             deleteDevice: { try await service.deleteRelay(deviceId: $0) }
         )

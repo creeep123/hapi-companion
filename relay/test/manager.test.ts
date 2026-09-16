@@ -61,4 +61,9 @@ describe('RelayManager', () => {
     await manager.configure(config({ revision: 2 }), 1); await manager.resume()
     expect(engine.stops).toBe(2); expect(engine.starts).toBe(3)
   })
+  test('official mode activates ntfy without storing a patched-Hub device credential', async () => {
+    const { manager, store } = await setup(); await manager.configure(config(), 0); await manager.activateOfficial('phone')
+    const state = await store.load(); expect(state.sourceMode).toBe('officialHapi'); expect(state.enabled).toBeTrue(); expect(state.credential).toBeUndefined(); expect(state.activation).toBeUndefined()
+    await manager.pause(true); expect((await store.load()).paused).toBeTrue()
+  })
 })
