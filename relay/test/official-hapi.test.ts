@@ -54,6 +54,14 @@ describe('OfficialHapiClient', () => {
     expect(await client.session('s1')).toMatchObject({ id: 's1', active: true })
   })
 
+  test('preserves HTTP failure classification when a messages request fails', async () => {
+    const fetcher = async (input: RequestInfo | URL): Promise<Response> => new URL(String(input)).pathname === '/api/auth'
+      ? Response.json({ token: `jwt-${'x'.repeat(20)}` })
+      : new Response('', { status: 400 })
+    const client = new OfficialHapiClient('https://hapi.example', 'secret', fetcher as any)
+    await expect(client.messages('s1', { afterAt: 0, afterSeq: 0, epoch: 1 })).rejects.toMatchObject({ code: 'unavailable', permanent: false })
+  })
+
   test('fails closed when connected verdict is absent', async () => {
     const fetcher = async (input: RequestInfo | URL): Promise<Response> => new URL(String(input)).pathname === '/api/auth'
       ? Response.json({ token: `jwt-${'x'.repeat(20)}` })

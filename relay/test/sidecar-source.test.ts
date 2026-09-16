@@ -103,6 +103,20 @@ describe('SidecarSourceEngine', () => {
     engine.start(); for (let i = 0; i < 20 && !store.pending(credential.consumerId).length; i++) await Bun.sleep(5)
     expect(store.pending(credential.consumerId)[0]?.event).toMatchObject({ kind: 'ready', sessionName: 'Project' }); await engine.stop()
   })
+  test('rebaselines an empty message watermark after a gap instead of sending a zero cursor', async () => {
+    const queries: any[] = []
+    const client = {
+      catalog: async () => [{ id: 's1', active: false, metadata: { name: 'Empty', flavor: 'codex' } }],
+      session: async () => ({ id: 's1', active: false, metadata: { name: 'Empty', flavor: 'codex' } }),
+      messages: async (_id: string, query: any) => { queries.push(query); return { messages: [], page: { epoch: 4, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } } },
+      events: async function* (_cursor: unknown, signal: AbortSignal) { yield { type: 'connected', connected: { resume: 'gap' } }; await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })) }
+    }
+    const { store, engine } = await setup(client)
+    const initial = new EventInterpreter('https://hapi.example', 'ns', () => 10_000); initial.baseline([await client.session()]); initial.baselineMessages('s1', await client.messages('s1', { limit: 1 }))
+    queries.length = 0; store.commitBaseline([{ id: 's1', active: false }], initial.exportState())
+    engine.start(); for (let i = 0; i < 30 && !queries.length; i++) await Bun.sleep(5)
+    expect(queries).toEqual([{ limit: 1 }]); await engine.stop()
+  })
   test('reconciliation overflow aborts the source and preserves the committed cursor', async () => {
     const client = {
       catalog: async (signal: AbortSignal) => new Promise<any[]>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })),

@@ -108,7 +108,7 @@ export class SidecarSourceEngine {
 
   private async reconcileMessages(sessionId: string, cold: boolean, signal: AbortSignal) {
     const cursor = this.interpreter.messageCursor(sessionId)
-    if (cold || !cursor) {
+    if (cold || !cursor || (cursor.at === 0 && cursor.seq === 0)) {
       const latest = await this.client.messages(sessionId, { limit: 1 }, signal)
       this.interpreter.baselineMessages(sessionId, latest)
       return []
