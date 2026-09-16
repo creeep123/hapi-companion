@@ -9,7 +9,7 @@ This is a candidate runbook. It does not authorize a production change. Producti
 - current Relay state, patched HAPI package/database and Mac binding rollback material are retained;
 - operator has separately approved the target VM, public Sidecar origin and migration window.
 
-Never put the HAPI access token in an environment variable, command argument, log, issue or HTTP request to the Sidecar. Install it as a root-controlled `0600` source for systemd `LoadCredential`. The service sees only the runtime credential copy.
+Never put the HAPI access token in an environment variable, command argument, log, issue or HTTP request to the Sidecar. Install it as a root-controlled `0600` source for systemd `LoadCredential`. The service accepts the runtime copy only at the exact `CREDENTIALS_DIRECTORY/hapi-access-token` path and only with systemd's root-owned, read-only credential-mount permissions; an explicit non-systemd file must remain owned by the service UID with no group or world access.
 
 The non-secret environment file contains exactly the three HTTPS origins and the mode:
 

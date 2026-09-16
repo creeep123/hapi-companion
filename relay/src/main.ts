@@ -11,6 +11,7 @@ import { SidecarManager } from './sidecar-manager'
 import { createSidecarHandler } from './sidecar-server'
 import { SidecarSourceEngine } from './sidecar-source'
 import { SidecarStore } from './sidecar-store'
+import { readSourceToken } from './source-credential'
 import { StateStore } from './state'
 
 const statePath = process.env.HAPI_MOBILE_RELAY_STATE ?? '/var/lib/hapi-mobile-relay/state.json'
@@ -59,13 +60,6 @@ if (command === 'pair-code') {
 } else { process.stderr.write('usage: hapi-mobile-relay [serve|serve-sidecar|pair-code|sidecar-backup <path>|sidecar-shadow-report <key-file>]\n'); process.exit(2) }
 
 function requiredOrigin(name: string): string { const raw = process.env[name]; if (!raw) throw new Error(`${name}_required`); const url = new URL(raw); if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.search || url.hash) throw new Error(`${name}_invalid`); return `${url.protocol}//${url.host}` }
-async function readSourceToken(): Promise<string> {
-  const path = process.env.HAPI_SIDECAR_ACCESS_TOKEN_FILE ?? (process.env.CREDENTIALS_DIRECTORY ? `${process.env.CREDENTIALS_DIRECTORY}/hapi-access-token` : '')
-  if (!path) throw new Error('HAPI_SIDECAR_ACCESS_TOKEN_FILE_required')
-  const file = await lstat(path); if (!file.isFile() || (file.mode & 0o077) !== 0 || (typeof process.getuid === 'function' && file.uid !== process.getuid())) throw new Error('source_credential_permissions')
-  const token = (await readFile(path, 'utf8')).trim(); if (token.length < 16 || token.length > 4096 || /[\r\n]/.test(token)) throw new Error('source_credential_invalid')
-  return token
-}
 async function readPrivateFile(path: string, label: string): Promise<Uint8Array> {
   if (!path.startsWith('/')) throw new Error(`${label}_path_invalid`)
   const info = await lstat(path); if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) throw new Error(`${label}_file_unsafe`)
