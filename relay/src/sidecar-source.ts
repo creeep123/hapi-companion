@@ -132,7 +132,7 @@ export class SidecarSourceEngine {
       const updatedAt = event.data && typeof event.data === 'object' && Number.isSafeInteger((event.data as any).updatedAt) ? Number((event.data as any).updatedAt) : undefined
       this.pendingCursor = id; this.pendingCursorCount++
       if (updatedAt !== undefined) this.pendingCatalogTouches.set(event.sessionId, updatedAt)
-      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 1_000) this.flushPendingCursor()
+      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 5_000) this.flushPendingCursor()
       return
     }
     this.flushPendingCursor()
