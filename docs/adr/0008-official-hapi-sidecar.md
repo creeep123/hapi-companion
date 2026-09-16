@@ -7,11 +7,13 @@
 
 The current Mac and mobile notification paths consume a Companion API added to HAPI by `integrations/hapi/hapi-companion.patch`. That patch provides durable outbox, device credentials, catalog, SSE and explicit ACK, but every upstream HAPI release requires a source rebase, schema reconciliation, full candidate build and coordinated updater pin.
 
-HAPI v0.30.7 already exposes namespace-filtered session REST APIs, a global authenticated SSE stream, message cursors and exact session identifiers. Its replay buffer is process-local and does not provide external consumer ACKs, but the product owner accepts the possibility of a missed transient notification during an abnormal HAPI restart.
+HAPI v0.30.7 already exposes namespace-filtered session REST APIs, a global authenticated SSE stream, message pages and exact session identifiers. Its replay buffer is process-local and does not provide external consumer ACKs. The product owner accepts that ready/task events outside available replay can be missed after a gap.
 
 ## Decision
 
 Build a Companion-owned Sidecar that consumes one official HAPI SSE connection per namespace and uses official REST calls to enrich and reconcile session state. Convert proven transitions into the existing version 1 Companion event contract and transactionally store them in a Sidecar-owned SQLite outbox. Deliver to Mac and ntfy through independent consumers and cursors.
+
+On `resume=gap`, establish a current-state baseline from catalog and required session details while buffering new SSE frames. Recover pending input/permission requests from that state, clear legacy message watermarks, and apply buffered frames in order using their official SSE IDs. Do not scan message history for old ready/task events; this keeps recovery bounded for arbitrarily long sessions and makes the accepted loss boundary explicit.
 
 Keep the public HAPI PWA origin separate from the Sidecar API origin. Rebuild exact session URLs from the trusted public origin. Keep the namespace-scoped HAPI access token only on the VM; give clients scoped Sidecar tokens.
 
@@ -35,7 +37,7 @@ The official source credential is installed only through a VM-local operation. P
 - Canonical title/body are persisted for bounded offline replay; raw messages and transcripts are not.
 - Replay expires after 35 days and inactive consumer leases expire after 45 days, keeping storage bounded and making long-offline data loss explicit.
 - Reaching the storage ceiling closes the official stream at the last committed cursor until checkpoint/retention recovery succeeds; frames are never accumulated in memory.
-- An abnormal HAPI restart can still hide an event that exists only inside the unavailable interval.
+- A HAPI replay gap can hide a ready/task event even when its message remains in history; current pending input/permission requests are still recovered from session state.
 - HAPI event semantic changes may require an adapter update even when schemas remain syntactically compatible.
 - The existing Mobile Relay becomes the operational base, but its serial engine is replaced rather than extended.
 
