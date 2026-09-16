@@ -13,7 +13,7 @@ if command -v sha256sum >/dev/null 2>&1; then ACTUAL_SHA="$(sha256sum "$ARTIFACT
 [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "artifact SHA-256 mismatch" >&2; exit 1; }
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
-BASE=/opt/hapi-mobile-relay; INSTALL_DIR="$(realpath -m "$BASE/$VERSION")"
+BASE=/opt/hapi-companion-sidecar; INSTALL_DIR="$(realpath -m "$BASE/$VERSION")"
 [[ "$INSTALL_DIR" == "$BASE/"* && "$INSTALL_DIR" != "$BASE/current" ]] || { echo "install path escaped base" >&2; exit 2; }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"; UNIT_SOURCE="$(realpath "$SCRIPT_DIR/hapi-companion-sidecar.service")"
 [[ "$UNIT_SOURCE" == "$SCRIPT_DIR/"* ]] || { echo "unit path escaped bundle" >&2; exit 2; }
@@ -22,7 +22,7 @@ if systemctl is-active --quiet hapi-companion-sidecar; then
   echo "active Sidecar upgrade refused; create and verify the schema-matched backup, stop the service, then rerun" >&2
   exit 1
 fi
-install -d -o hapi-mobile-relay -g hapi-mobile-relay -m 0700 /var/lib/hapi-mobile-relay
+install -d -o hapi-mobile-relay -g hapi-mobile-relay -m 0700 /var/lib/hapi-companion-sidecar
 install -d -o root -g root -m 0755 "$INSTALL_DIR"
 install -o root -g root -m 0755 "$ARTIFACT" "$INSTALL_DIR/hapi-mobile-relay"
 install -o root -g root -m 0644 "$UNIT_SOURCE" /etc/systemd/system/hapi-companion-sidecar.service

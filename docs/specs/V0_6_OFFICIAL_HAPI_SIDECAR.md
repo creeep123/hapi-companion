@@ -253,7 +253,7 @@ Minimum schema:
 | `canonical_notifications` | Monotonic sequence, version 1 event payload and retention metadata |
 | `consumers` | Mac/ntfy identity, credential hash, enabled state and ACK cursor |
 | `deliveries` | Per-notification, per-consumer pending/terminal state and attempts |
-The existing private JSON `StateStore` remains the control-plane store for management/bootstrap hashes, the ntfy topic, policy and configuration revision. It is not used for canonical events or consumer cursors. Keeping that already-deployed format avoids copying secrets during migration and preserves rollback byte-for-byte. SQLite owns only source observation, catalog, canonical events and delivery state; no correctness operation requires a transaction across the two stores.
+The existing private JSON `StateStore` format remains the control-plane format for management/bootstrap hashes, the ntfy topic, policy and configuration revision. The Sidecar uses a private copy under its own state directory; it never shares one writable JSON path with the legacy Relay. At cutover, both services are stopped while the latest legacy JSON is copied with its owner and mode, and the untouched legacy original remains the rollback source. SQLite owns only source observation, catalog, canonical events and delivery state; no correctness operation requires a transaction across the two stores.
 
 Retention has two bounds:
 

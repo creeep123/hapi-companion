@@ -20,13 +20,13 @@ HAPI_SIDECAR_API_ORIGIN=https://relay.example
 HAPI_SIDECAR_DELIVERY_MODE=shadow
 ```
 
-Use the packaged `hapi-companion-sidecar.service`. Keep the listener on loopback and expose only the approved `/health`, `/v1`, `/v2` and `/companion` routes through the existing HTTPS reverse proxy. The proxy must replace client-supplied forwarding headers.
+Use the packaged `hapi-companion-sidecar.service`. It has its own immutable tree under `/opt/hapi-companion-sidecar`, private state under `/var/lib/hapi-companion-sidecar`, and loopback port `8790`; it does not replace the live Mobile Relay binary, JSON state or port `8789` during shadow. Expose only the approved `/health`, `/v1`, `/v2` and `/companion` routes through the existing HTTPS reverse proxy when the migration phase calls for them. The proxy must replace client-supplied forwarding headers.
 
 ## Backup
 
 Do not copy a live SQLite main file by itself. Use `hapi-mobile-relay sidecar-backup <new-absolute-path>`; it creates a consistent `VACUUM INTO` snapshot, enforces `0600` and runs `PRAGMA integrity_check`. The offline alternative is to stop the service, checkpoint with `PRAGMA wal_checkpoint(TRUNCATE)`, verify no writer remains, and copy the database. Fsync the accepted backup and record its SHA-256 without printing file contents. Copy secret files separately with `0600`; exclude them from diagnostics.
 
-Also retain the existing Relay JSON state, prior binary and service unit. HAPI binary rollback across a database schema change requires the matching HAPI database snapshot managed by Safe Updater.
+Also retain the existing Relay JSON state, prior binary and service unit. HAPI binary rollback across a database schema change requires the matching HAPI database snapshot managed by Safe Updater. The Sidecar works from a private copy of Relay control state; never let the legacy Relay and Sidecar write the same JSON path.
 
 ## Shadow acceptance
 
@@ -42,7 +42,7 @@ Create a temporary root-owned mode-`0600` comparison key with at least 32 random
 
 ## Authorized cutover
 
-Cut over only in a quiet window with no active turn. Drain the patched consumers and stop the old ntfy dispatcher. Change the environment ceiling to `HAPI_SIDECAR_DELIVERY_MODE=active`, restart the Sidecar, and wait until authenticated `GET /v2/status` reports `source.state=live` while `delivery.enabled=false`. Generate a new one-time pair code only when the Mac has no retained management binding.
+Cut over only in a quiet window with no active turn. Drain the patched consumers and stop the old ntfy dispatcher. With both writers stopped, copy the latest legacy Relay JSON to the Sidecar's private state path with the same owner and mode, preserving the untouched legacy original for rollback. Change the environment ceiling to `HAPI_SIDECAR_DELIVERY_MODE=active`, restart the Sidecar, switch the approved proxy routes from loopback `8789` to `8790`, and wait until authenticated `GET /v2/status` reports `source.state=live` while `delivery.enabled=false`. Generate a new one-time pair code only when the Mac has no retained management binding.
 
 In Mac settings, pair the Relay or choose “Mac 使用 Sidecar”. The app creates a temporary consumer, probes authenticated status, catalog and the first SSE connected frame, and only then stores the v2 Keychain binding. A failed probe revokes the temporary consumer and leaves the legacy binding active. Configure the mobile rules, then explicitly activate the v2 ntfy receiver. This writes the durable cutover timestamp and opens delivery only if the source is live; an environment change or restart alone cannot activate notifications.
 
