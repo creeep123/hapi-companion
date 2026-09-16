@@ -13,7 +13,7 @@ LoadCredential=hapi-access-token:/etc/hapi-companion-sidecar/hapi-access-token
 Environment=HAPI_MOBILE_RELAY_STATE=/var/lib/hapi-companion-sidecar/state.json
 Environment=HAPI_SIDECAR_DB=/var/lib/hapi-companion-sidecar/sidecar.sqlite
 Environment=HAPI_MOBILE_RELAY_HOST=127.0.0.1
-Environment=HAPI_MOBILE_RELAY_PORT=8790
+Environment=HAPI_MOBILE_RELAY_PORT=8791
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

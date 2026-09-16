@@ -20,7 +20,7 @@ describe('Linux installer validation', () => {
   test('Sidecar unit uses systemd credential and defaults to no public listener', async () => {
     const unit = await Bun.file(resolve(import.meta.dir, '../packaging/hapi-companion-sidecar.service')).text()
     expect(unit).toContain('serve-sidecar'); expect(unit).toContain('LoadCredential=hapi-access-token:')
-    expect(unit).toContain('HAPI_MOBILE_RELAY_HOST=127.0.0.1'); expect(unit).toContain('HAPI_MOBILE_RELAY_PORT=8790'); expect(unit).toContain('/opt/hapi-companion-sidecar/current/'); expect(unit).toContain('/var/lib/hapi-companion-sidecar/'); expect(unit).toContain('ProtectSystem=strict')
+    expect(unit).toContain('HAPI_MOBILE_RELAY_HOST=127.0.0.1'); expect(unit).toContain('HAPI_MOBILE_RELAY_PORT=8791'); expect(unit).toContain('/opt/hapi-companion-sidecar/current/'); expect(unit).toContain('/var/lib/hapi-companion-sidecar/'); expect(unit).toContain('ProtectSystem=strict')
     expect(unit).not.toContain('ACCESS_TOKEN=')
   })
   test('Sidecar installer refuses an active upgrade and never performs binary-only automatic rollback', async () => {
