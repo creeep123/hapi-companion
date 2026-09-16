@@ -21,6 +21,7 @@ export type HealthState = {
 export type AttentionCode = 'hub_unauthorized' | 'hub_contract_invalid' | 'hub_stream_unavailable' | 'hub_stream_ended' | 'hub_ack_conflict' | 'hub_ack_unavailable' | 'ntfy_invalid_url' | 'ntfy_rate_limited' | 'ntfy_temporary_failure' | 'ntfy_configuration_error' | 'ntfy_invalid_response' | 'network_temporary_failure'
 export type PersistedState = {
   schemaVersion: 1; managementTokenHash?: string
+  sourceMode?: 'patchedHub' | 'officialHapi'
   bootstrap?: { hash: string; expiresAt: number; failures: number; sources: Record<string, number> }
   config?: RelayConfig; credential?: HubCredential; activation?: Activation
   enabled: boolean; paused: boolean; handled: Record<string, { seq: number; at: number; reason: 'posted' | 'suppressed' | 'paused' }>

@@ -91,7 +91,7 @@ private final class ServiceFixture: @unchecked Sendable {
         defaults = UserDefaults(suiteName: suite)!
         service = CompanionService(session: session, credentials: CompanionCredentialAccess(
             load: { state.load() }, save: { state.save($0) }, delete: { state.delete() }
-        ), defaults: defaults, configuration: { CompanionConfiguration(hubURL: url, cliAPIToken: "fixture-cli") })
+        ), sidecarCredentials: CompanionSidecarCredentialAccess(load: { _ in nil }, save: { _ in }, delete: { _ in }), defaults: defaults, configuration: { CompanionConfiguration(hubURL: url, cliAPIToken: "fixture-cli") })
     }
 
     deinit {
@@ -102,6 +102,16 @@ private final class ServiceFixture: @unchecked Sendable {
 }
 
 final class CompanionServiceTests: XCTestCase, @unchecked Sendable {
+    func testSidecarCredentialWinsWithoutDeletingLegacyCredential() async throws {
+        let publicURL = URL(string: "https://hapi.example")!, sidecarURL = URL(string: "https://relay.example")!
+        let legacy = CompanionCredential(hubURL: publicURL, deviceId: "legacy", token: "legacy-token")
+        let sidecar = CompanionCredential(hubURL: sidecarURL, deviceId: "consumer", token: "consumer-token", publicHubURL: publicURL, transportVersion: 2)
+        let service = CompanionService(credentials: CompanionCredentialAccess(load: { legacy }, save: { _ in XCTFail("must not replace legacy") }, delete: { XCTFail("must preserve rollback credential") }), sidecarCredentials: CompanionSidecarCredentialAccess(load: { _ in sidecar }, save: { _ in }, delete: { _ in }), configuration: { CompanionConfiguration(hubURL: publicURL, cliAPIToken: "unused") })
+        let selected = try await service.ensureCredential()
+        XCTAssertEqual(selected.hubURL, sidecarURL)
+        XCTAssertEqual(selected.deliveryHubURL, publicURL)
+        XCTAssertEqual(selected.transportVersion, 2)
+    }
     func testConcurrentCatalogAndStreamAcquisitionPairOnlyOnce() async throws {
         let fixture = ServiceFixture(paired: false)
         async let streamCredential = fixture.service.ensureCredential()

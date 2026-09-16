@@ -14,7 +14,8 @@ export class SidecarSourceEngine {
     private readonly interpreter: EventInterpreter,
     private readonly broker: ConsumerBroker,
     private readonly client: SourceClient,
-    private readonly sleep = abortableSleep
+    private readonly sleep = abortableSleep,
+    private readonly onEvent: () => void = () => {}
   ) {}
   start() { if (!this.task) { this.controller = new AbortController(); const task = this.run(this.controller.signal); this.task = task; task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined) } }
   async stop() { this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined }
@@ -80,7 +81,7 @@ export class SidecarSourceEngine {
     } else candidates = this.interpreter.observe(event, id)
     if (!candidates.length) this.store.advanceCursor(id)
     else for (const candidate of candidates) this.store.append(candidate, id)
-    this.broker.signal()
+    this.broker.signal(); if (candidates.length) this.onEvent()
   }
   private async refreshCatalog() { const catalog = await this.client.catalog(); this.store.replaceCatalog(catalog.map(catalogItem)) }
 }

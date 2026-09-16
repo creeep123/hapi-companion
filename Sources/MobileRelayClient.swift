@@ -92,6 +92,13 @@ struct MobileRelayStatus: Decodable, Equatable, Sendable {
 }
 
 struct MobileRelayPairResponse: Codable, Sendable { let managementToken: String }
+struct SidecarConsumerResponse: Codable, Sendable {
+    let consumerId: String
+    let token: String
+    let publicHapiOrigin: URL
+    let sidecarAPIOrigin: URL
+    let contractVersion: Int
+}
 
 struct MobileRelayPolicy: Codable, Equatable, Sendable {
     let scope: String
@@ -162,6 +169,9 @@ struct MobileRelayAPI: Sendable {
     var resume: @Sendable (URL, String) async throws -> Void
     var remove: @Sendable (URL, String) async throws -> Void
     var unpair: @Sendable (URL, String) async throws -> Void
+    var createSidecarConsumer: @Sendable (URL, String, String, String, URL) async throws -> SidecarConsumerResponse? = { _, _, _, _, _ in nil }
+    var configureSidecar: @Sendable (URL, String, MobileRelayConfiguration, Int) async throws -> Int = { _, _, _, _ in throw MobileRelayError.server(404) }
+    var activateSidecarNtfy: @Sendable (URL, String, String) async throws -> Void = { _, _, _ in throw MobileRelayError.server(404) }
 
     static func live(_ client: MobileRelayClient = MobileRelayClient()) -> Self {
         Self(
@@ -174,7 +184,10 @@ struct MobileRelayAPI: Sendable {
             repair: { try await client.repair(endpoint: $0, token: $1, repair: $2) },
             resume: { try await client.resume(endpoint: $0, token: $1) },
             remove: { try await client.remove(endpoint: $0, token: $1) },
-            unpair: { try await client.unpair(endpoint: $0, token: $1) }
+            unpair: { try await client.unpair(endpoint: $0, token: $1) },
+            createSidecarConsumer: { try await client.createSidecarConsumer(endpoint: $0, token: $1, installationId: $2, name: $3, publicHapiOrigin: $4) },
+            configureSidecar: { try await client.configureSidecar(endpoint: $0, token: $1, configuration: $2, expectedRevision: $3) },
+            activateSidecarNtfy: { try await client.activateSidecarNtfy(endpoint: $0, token: $1, receiverId: $2) }
         )
     }
 }
@@ -195,6 +208,12 @@ actor MobileRelayClient {
         try await request(endpoint: endpoint, path: "v1/pair", method: "POST", token: nil, body: ["code": code])
     }
 
+    func createSidecarConsumer(endpoint: URL, token: String, installationId: String, name: String, publicHapiOrigin: URL) async throws -> SidecarConsumerResponse? {
+        do {
+            return try await request(endpoint: endpoint, path: "v2/consumers", method: "POST", token: token, body: ["installationId": installationId, "name": name, "publicHapiOrigin": Self.origin(publicHapiOrigin)])
+        } catch MobileRelayError.server(404) { return nil }
+    }
+
     func status(endpoint: URL, token: String, activationId: String? = nil) async throws -> MobileRelayStatus {
         var components = URLComponents(url: endpoint.appending(path: "v1/status"), resolvingAgainstBaseURL: false)!
         if let activationId { components.queryItems = [URLQueryItem(name: "activationId", value: activationId)] }
@@ -204,6 +223,16 @@ actor MobileRelayClient {
     func configure(endpoint: URL, token: String, configuration: MobileRelayConfiguration, expectedRevision: Int) async throws -> Int {
         let response: RevisionResponse = try await request(endpoint: endpoint, path: "v1/config", method: "PUT", token: token, body: ConfigEnvelope(expectedRevision: expectedRevision, config: configuration))
         return response.revision
+    }
+
+    func configureSidecar(endpoint: URL, token: String, configuration: MobileRelayConfiguration, expectedRevision: Int) async throws -> Int {
+        let response: RevisionResponse = try await request(endpoint: endpoint, path: "v2/config", method: "PUT", token: token, body: ConfigEnvelope(expectedRevision: expectedRevision, config: configuration))
+        return response.revision
+    }
+
+    func activateSidecarNtfy(endpoint: URL, token: String, receiverId: String) async throws {
+        let response: OKResponse = try await request(endpoint: endpoint, path: "v2/receivers/ntfy", method: "POST", token: token, body: ["receiverId": receiverId])
+        guard response.ok else { throw MobileRelayError.invalidResponse }
     }
 
     func test(endpoint: URL, token: String, sessionId: String) async throws {
@@ -246,6 +275,11 @@ actor MobileRelayClient {
               endpoint.user == nil, endpoint.password == nil, endpoint.query == nil, endpoint.fragment == nil,
               endpoint.path.isEmpty || endpoint.path == "/" else { throw MobileRelayError.invalidEndpoint }
         return try await request(url: endpoint.appending(path: path), method: method, token: token, body: body)
+    }
+
+    private static func origin(_ url: URL) -> String {
+        var value = URLComponents(); value.scheme = url.scheme?.lowercased(); value.host = url.host?.lowercased(); value.port = url.port
+        return value.url?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? url.absoluteString
     }
 
     private func request<Response: Decodable, Body: Encodable>(url: URL, method: String, token: String?, body: Body?) async throws -> Response {

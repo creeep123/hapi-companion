@@ -20,6 +20,8 @@ final class MobileNotificationController {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let secrets: MobileRelaySecretAccess
     @ObservationIgnored private let api: MobileRelayAPI
+    @ObservationIgnored private let sidecarCredentials: CompanionSidecarCredentialAccess
+    @ObservationIgnored private let sidecarReady: @Sendable () async -> Void
     @ObservationIgnored private let registerDevice: @Sendable (String, String) async throws -> RegistrationResponse
     @ObservationIgnored private let deleteDevice: @Sendable (String) async throws -> Void
     @ObservationIgnored private var hubURL: URL?
@@ -59,12 +61,16 @@ final class MobileNotificationController {
         defaults: UserDefaults = .standard,
         secrets: MobileRelaySecretAccess = .keychain,
         api: MobileRelayAPI = .live(),
+        sidecarCredentials: CompanionSidecarCredentialAccess = .keychain,
+        sidecarReady: @escaping @Sendable () async -> Void = {},
         registerDevice: @escaping @Sendable (String, String) async throws -> RegistrationResponse,
         deleteDevice: @escaping @Sendable (String) async throws -> Void
     ) {
         self.defaults = defaults
         self.secrets = secrets
         self.api = api
+        self.sidecarCredentials = sidecarCredentials
+        self.sidecarReady = sidecarReady
         self.registerDevice = registerDevice
         self.deleteDevice = deleteDevice
     }
@@ -153,9 +159,35 @@ final class MobileNotificationController {
             try saveSecrets(value)
             pairingCode = ""
             stage = .readyToAdd
-            message = "Relay 已配对，可以添加手机"
+            let sidecar = try await pairMacConsumerIfSupported(endpoint: endpoint, managementToken: value.managementToken)
+            persistSidecarMode(sidecar)
+            message = sidecar ? "Relay 已配对，Mac 已切换到官方 HAPI Sidecar" : "Relay 已配对，可以添加手机"
             await refreshStatus()
         }
+    }
+
+    func connectMacThroughRelay() async {
+        guard !busy, let endpoint = validatedEndpoint(), let value = storedSecrets else { return }
+        await perform {
+            if try await pairMacConsumerIfSupported(endpoint: endpoint, managementToken: value.managementToken) {
+                persistSidecarMode(true)
+                message = "Mac 已连接 Sidecar，通知连接正在重启"
+            } else { message = "当前 Relay 版本尚未提供官方 HAPI Sidecar" }
+        }
+    }
+
+    private func pairMacConsumerIfSupported(endpoint: URL, managementToken: String) async throws -> Bool {
+        guard let hubURL else { throw MobileRelayError.invalidResponse }
+        if (try? sidecarCredentials.load(hubURL)) != nil { return true }
+        let installationId = defaults.string(forKey: "companionInstallationId") ?? UUID().uuidString
+        defaults.set(installationId, forKey: "companionInstallationId")
+        guard let response = try await api.createSidecarConsumer(endpoint, managementToken, installationId, Host.current().localizedName ?? "Mac", hubURL) else { return false }
+        guard response.contractVersion == 1,
+              CompanionConfiguration.sameOrigin(response.publicHapiOrigin, hubURL),
+              CompanionConfiguration.sameOrigin(response.sidecarAPIOrigin, endpoint) else { throw MobileRelayError.invalidResponse }
+        try sidecarCredentials.save(CompanionCredential(hubURL: response.sidecarAPIOrigin, deviceId: response.consumerId, token: response.token, publicHubURL: response.publicHapiOrigin, transportVersion: 2))
+        await sidecarReady()
+        return true
     }
 
     func addPhone(preferences: ReminderPreferences) async {
@@ -194,6 +226,13 @@ final class MobileNotificationController {
                 updated.rotationPreviousTopic = nil
                 do { try saveSecrets(updated) }
                 catch { message = "手机通知已恢复，但无法清理旧订阅地址记录：\(error.localizedDescription)" }
+            }
+            return
+        }
+        if sidecarMode {
+            await perform {
+                try await api.activateSidecarNtfy(endpoint, value.managementToken, relayInstallationId(for: hubURL))
+                try completeSidecarActivation()
             }
             return
         }
@@ -478,7 +517,9 @@ final class MobileNotificationController {
             policy: MobileRelayPolicy(currentPreferences),
             contentMode: contentMode ?? self.contentMode
         )
-        let revision = try await api.configure(endpoint, secrets.managementToken, config, expectedRevision)
+        let revision = sidecarMode
+            ? try await api.configureSidecar(endpoint, secrets.managementToken, config, expectedRevision)
+            : try await api.configure(endpoint, secrets.managementToken, config, expectedRevision)
         knownRelayRevision = revision
         persistRelayRevision(revision)
         rulesState = "规则已同步"
@@ -486,6 +527,21 @@ final class MobileNotificationController {
         syncedAt = Date()
         syncedTimeZone = TimeZone.current.identifier
         return revision
+    }
+
+    private var sidecarMode: Bool {
+        guard let hubURL else { return false }
+        return defaults.bool(forKey: key("sidecarMode", storageScope(hubURL)))
+    }
+    private func persistSidecarMode(_ value: Bool) {
+        guard let hubURL else { return }
+        defaults.set(value, forKey: key("sidecarMode", storageScope(hubURL)))
+    }
+    private func completeSidecarActivation() throws {
+        guard let hubURL else { throw MobileRelayError.invalidResponse }
+        defaults.removeObject(forKey: key("deviceId", storageScope(hubURL)))
+        defaults.removeObject(forKey: key("activationId", storageScope(hubURL)))
+        stage = .active; saveStage("active"); message = "手机通知已启用"
     }
 
     private func apply(_ status: MobileRelayStatus) {

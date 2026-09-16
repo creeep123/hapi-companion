@@ -29,20 +29,25 @@ actor CompanionService {
     typealias StatusHandler = @Sendable (String) async -> Void
 
     private let keychain: CompanionCredentialAccess
+    private let sidecarKeychain: CompanionSidecarCredentialAccess
     private let loadConfiguration: @Sendable () throws -> CompanionConfiguration
     private let defaults: UserDefaults
     private var credentialTask: Task<CompanionCredential, Error>?
     private let session: URLSession
     private var runTask: Task<Void, Never>?
     private var connectionHealthy = false
+    private var savedEventHandler: EventHandler?
+    private var savedStatusHandler: StatusHandler?
 
     init(
         session: URLSession? = nil,
         credentials: CompanionCredentialAccess = .keychain,
+        sidecarCredentials: CompanionSidecarCredentialAccess = .keychain,
         defaults: UserDefaults = .standard,
         configuration: @escaping @Sendable () throws -> CompanionConfiguration = { try CompanionConfiguration.load() }
     ) {
         self.keychain = credentials
+        self.sidecarKeychain = sidecarCredentials
         self.defaults = defaults
         self.loadConfiguration = configuration
         let configuration = URLSessionConfiguration.default
@@ -52,7 +57,13 @@ actor CompanionService {
     }
 
     func start(onEvent: @escaping EventHandler, onStatus: @escaping StatusHandler) {
+        savedEventHandler = onEvent
+        savedStatusHandler = onStatus
         guard runTask == nil else { return }
+        launch(onEvent: onEvent, onStatus: onStatus)
+    }
+
+    private func launch(onEvent: @escaping EventHandler, onStatus: @escaping StatusHandler) {
         runTask = Task {
             var attempt = 0
             while !Task.isCancelled {
@@ -64,6 +75,7 @@ actor CompanionService {
                     attempt = 0
                 } catch CompanionServiceError.deviceUnauthorized {
                     CompanionLog.error("device credential rejected")
+                    if let hub = try? loadConfiguration().hubURL { try? sidecarKeychain.delete(hub) }
                     try? keychain.delete()
                     await onStatus("设备凭证已失效，将重新配对…")
                     attempt += 1
@@ -90,6 +102,12 @@ actor CompanionService {
         }
     }
 
+    func reconnect() {
+        runTask?.cancel(); runTask = nil; credentialTask?.cancel(); credentialTask = nil
+        guard let event = savedEventHandler, let status = savedStatusHandler else { return }
+        launch(onEvent: event, onStatus: status)
+    }
+
     func stop() {
         runTask?.cancel()
         runTask = nil
@@ -108,8 +126,9 @@ actor CompanionService {
     private func acquireCredential() async throws -> CompanionCredential {
         let configuration = try loadConfiguration()
         let hubURL = configuration.hubURL
+        if let sidecar = try sidecarKeychain.load(hubURL) { return sidecar }
         if let existing = try keychain.load() {
-            if CompanionConfiguration.sameOrigin(existing.hubURL, hubURL) {
+            if CompanionConfiguration.sameOrigin(existing.deliveryHubURL, hubURL) {
                 return existing
             }
             CompanionLog.info("configured Hub changed; replacing device credential")
@@ -175,7 +194,7 @@ actor CompanionService {
                     try await CompanionDeliveryGate.process(
                         event: event,
                         seq: eventId,
-                        deliver: { event, seq in await onEvent(event, seq, credential.hubURL) },
+                        deliver: { event, seq in await onEvent(event, seq, credential.deliveryHubURL) },
                         acknowledge: { [self] seq, id in
                             try await acknowledge(seq, eventId: id, credential: credential)
                         }
@@ -196,7 +215,7 @@ actor CompanionService {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 404 || status == 501 { throw CompanionServiceError.catalogUnsupported }
         guard status == 200 else { throw CompanionServiceError.serverStatus(status) }
-        return (try JSONDecoder().decode(CompanionCatalog.self, from: data), credential.hubURL)
+        return (try JSONDecoder().decode(CompanionCatalog.self, from: data), credential.deliveryHubURL)
     }
 
     func registerRelay(installationId: String, name: String) async throws -> RegistrationResponse {

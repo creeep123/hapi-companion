@@ -34,10 +34,11 @@ private final class RelayURLProtocol: URLProtocol, @unchecked Sendable {
         case "/v1/config": body = #"{"revision":4}"#
         case "/v1/test": body = #"{"accepted":true}"#
         case "/v1/activate": body = #"{"status":"committed"}"#
+        case "/v2/consumers": body = #"{"consumerId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","token":"consumer-secret","publicHapiOrigin":"https://hapi.example","sidecarAPIOrigin":"https://relay.example","contractVersion":1}"#
         case "/v1/pause", "/v1/resume", "/v1/receiver": body = #"{"ok":true}"#
         default: body = #"{"error":"unexpected"}"#
         }
-        let response = HTTPURLResponse(url: request.url!, statusCode: path.hasPrefix("/v1/") ? 200 : 404, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        let response = HTTPURLResponse(url: request.url!, statusCode: path.hasPrefix("/v1/") || path == "/v2/consumers" ? 200 : 404, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
@@ -103,6 +104,8 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         try await client.test(endpoint: endpoint, token: "management", sessionId: "real/session")
         try await client.pause(endpoint: endpoint, token: "management", paused: true)
         try await client.resume(endpoint: endpoint, token: "management")
+        let consumer = try await client.createSidecarConsumer(endpoint: endpoint, token: "management", installationId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Mac", publicHapiOrigin: URL(string: "https://hapi.example")!)
+        XCTAssertEqual(consumer?.contractVersion, 1)
 
         let requests = RelayURLProtocol.recorder.requests()
         let statusRequest = try XCTUnwrap(requests.first { $0.url?.path == "/v1/status" })
@@ -119,6 +122,10 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         let pauseJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: try XCTUnwrap(requests.first { $0.url?.path == "/v1/pause" }?.httpBody)) as? [String: Bool])
         XCTAssertEqual(pauseJSON["paused"], true)
         XCTAssertEqual(requests.first { $0.url?.path == "/v1/resume" }?.httpMethod, "POST")
+        let sidecar = try XCTUnwrap(requests.first { $0.url?.path == "/v2/consumers" })
+        XCTAssertEqual(sidecar.value(forHTTPHeaderField: "Authorization"), "Bearer management")
+        let sidecarJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: try XCTUnwrap(sidecar.httpBody)) as? [String: String])
+        XCTAssertEqual(sidecarJSON["publicHapiOrigin"], "https://hapi.example")
     }
 
     func testRejectsNonHTTPSBeforeNetwork() async {
