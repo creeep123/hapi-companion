@@ -4,6 +4,15 @@ import { EventInterpreter, extractTask } from '../src/interpreter'
 const session = (overrides: Record<string, unknown> = {}) => ({ id: 's/1', active: true, thinking: false, metadata: { name: '项目开发', flavor: 'codex' }, ...overrides })
 
 describe('EventInterpreter', () => {
+  test('filters session patches that cannot change notification semantics', () => {
+    const i = new EventInterpreter('https://hapi.example', 'ns', () => 20_000)
+    i.baseline([session({ active: true, thinking: true, activeTurnStartedAt: 10_000 })])
+    expect(i.sessionPatchNeedsRefresh('s/1', { updatedAt: 20_000, model: 'new-model', thinking: true, activeTurnStartedAt: 10_000 })).toBeFalse()
+    expect(i.sessionPatchNeedsRefresh('s/1', { thinking: false })).toBeTrue()
+    expect(i.sessionPatchNeedsRefresh('s/1', { agentState: { version: 2, value: {} } })).toBeTrue()
+    expect(i.sessionPatchNeedsRefresh('s/1', { unknownFutureField: true })).toBeTrue()
+    expect(i.sessionPatchNeedsRefresh('missing', { updatedAt: 20_000 })).toBeTrue()
+  })
   test('baseline does not notify old requests and only emits new input/permission IDs', () => {
     const i = new EventInterpreter('https://hapi.example', 'ns', () => 10_000)
     i.baseline([session({ agentState: { requests: { old: { tool: 'Bash' } } } })])

@@ -61,6 +61,12 @@ describe('SidecarStore', () => {
     const root = await mkdtemp(join(tmpdir(), 'sidecar-limit-')), dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const s = new SidecarStore(join(dir, 'sidecar.sqlite'), () => Date.now(), 1); stores.push(s); s.bindSource('https://hapi.example', 'ns')
     expect(() => s.append({ sourceKey: 'blocked', event: event() }, 'cursor')).toThrow('storage_limit'); expect(s.sourceCursor()).toBeUndefined(); expect(s.highWater()).toBe(0)
   })
+  test('refuses a filtered cursor transaction when storage is over the hard threshold', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sidecar-cursor-limit-')), dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const s = new SidecarStore(join(dir, 'sidecar.sqlite'), () => Date.now(), 1); stores.push(s); s.bindSource('https://hapi.example', 'ns')
+    s.replaceCatalog([{ id: 's1', title: 'One', updatedAt: 1 }])
+    expect(() => s.advanceCursor('cursor', { sessionId: 's1', updatedAt: 2 })).toThrow('storage_limit')
+    expect(s.sourceCursor()).toBeUndefined(); expect(s.catalog().sessions[0]?.updatedAt).toBe(1)
+  })
   test('creates an integrity-checked SQLite snapshot including committed rows', async () => {
     const s = await store(); s.bindSource('https://hapi.example', 'ns'); s.append({ sourceKey: 'one', event: event() }, 'cursor', [])
     const destination = join(dirname(s.path), 'backup.sqlite'); s.backup(destination)

@@ -181,7 +181,7 @@ Normalize completion status and bounded summary. Malformed structured content is
 
 ### 6.4 Input and permission request
 
-After a session-added or session-updated observation, fetch full session detail and compare the new request-ID set with the stored set. When a new request first appears, wait 500 ms and fetch detail again; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately.
+After a session-added or a semantically relevant session-updated observation, fetch full session detail and compare the new request-ID set with the stored set. Session patches that contain only catalog timestamps, unchanged turn status, or model/settings metadata cannot create or resolve a Companion notification; the adapter advances their official SSE cursor atomically and may update the catalog timestamp without fetching session detail or rewriting the interpreter checkpoint. Unknown patch fields and any changed turn-status field fail closed to the full refresh path. When a new request first appears, wait 500 ms and fetch detail again; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately while preserving input/permission and turn-transition detection.
 
 After removing an optional `functions.` prefix, these tools are input requests: `request_user_input`, `AskUserQuestion`, `ask_user_question`, and `CursorAskQuestion`. Other tools are permission requests. The full request object is authoritative; catalog request-kind summaries are insufficient.
 

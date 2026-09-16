@@ -12,6 +12,23 @@ async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Pr
 afterEach(() => { while (stores.length) stores.pop()!.close() })
 
 describe('SidecarSourceEngine', () => {
+  test('advances harmless session patches without refetching detail or the full catalog', async () => {
+    let catalogCalls = 0, detailCalls = 0
+    const client = {
+      catalog: async () => { catalogCalls++; return [{ id: 's1', title: 'One', active: true, updatedAt: 1 }] },
+      session: async () => { detailCalls++; return { id: 's1', title: 'One', active: true, thinking: false, updatedAt: 1 } },
+      messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        yield { type: 'event', frame: { id: 'event:harmless', event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: 123, model: 'new-model', thinking: false } } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, engine } = await setup(client); engine.start()
+    for (let i = 0; i < 30 && store.sourceCursor() !== 'event:harmless'; i++) await Bun.sleep(5)
+    expect(store.sourceCursor()).toBe('event:harmless'); expect(catalogCalls).toBe(1); expect(detailCalls).toBe(1)
+    expect(store.catalog().sessions[0]?.updatedAt).toBe(123); await engine.stop()
+  })
   test('gap snapshots before applying buffered live event and commits it', async () => {
     let release!: () => void; const hold = new Promise<void>(resolve => { release = resolve })
     const client = {

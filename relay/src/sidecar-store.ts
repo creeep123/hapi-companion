@@ -146,7 +146,13 @@ export class SidecarStore {
   append(candidate: Candidate, upstreamCursor: string, targetKinds: ConsumerKind[] = ['mac', 'ntfy']): number | undefined {
     return this.commitObservation([candidate], upstreamCursor, this.interpreterState(), targetKinds)[0]
   }
-  advanceCursor(upstreamCursor: string) { this.db.query('UPDATE source_binding SET last_event_id=?,updated_at=? WHERE singleton=1').run(upstreamCursor, this.now()) }
+  advanceCursor(upstreamCursor: string, catalogTouch?: { sessionId: string; updatedAt: number }) {
+    if (!this.ensureCapacity()) throw new SidecarStorageLimitError()
+    this.db.transaction(() => {
+      if (catalogTouch && Number.isSafeInteger(catalogTouch.updatedAt)) this.db.query('UPDATE session_catalog SET updated_at=? WHERE id=?').run(catalogTouch.updatedAt, catalogTouch.sessionId)
+      this.db.query("UPDATE source_binding SET last_event_id=?,state='live',attention_code=NULL,updated_at=? WHERE singleton=1").run(upstreamCursor, this.now())
+    })()
+  }
 
   commitObservation(candidates: Candidate[], upstreamCursor: string, state?: InterpreterState, targetKinds: ConsumerKind[] = ['mac', 'ntfy'], catalog?: Array<{ id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }>): number[] {
     if (!this.ensureCapacity()) throw new SidecarStorageLimitError()
