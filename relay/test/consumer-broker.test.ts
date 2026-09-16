@@ -32,4 +32,26 @@ describe('ConsumerBroker', () => {
     const ack = await broker.handler(request('/companion/ack', credential, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seq: 2, eventId: crypto.randomUUID() }) }))
     expect(ack?.status).toBe(409)
   })
+  test('a new stream replaces the prior stream for the same consumer', async () => {
+    const { credential, broker } = await setup(); const first = await broker.handler(request('/companion/events', credential)); const firstReader = first!.body!.getReader(); await firstReader.read()
+    const second = await broker.handler(request('/companion/events', credential)); const secondReader = second!.body!.getReader()
+    expect((await firstReader.read()).done).toBeTrue(); expect(new TextDecoder().decode((await secondReader.read()).value)).toContain('event: connected'); await secondReader.cancel()
+  })
+  test('ACK refills a stream beyond the first hundred pending rows', async () => {
+    const { store, credential, broker } = await setup()
+    const events = []
+    for (let index = 0; index < 101; index++) { const item = event({ eventId: crypto.randomUUID() }); events.push(item); store.append({ sourceKey: `s-${index}`, event: item }, String(index)) }
+    const response = await broker.handler(request('/companion/events', credential)); const reader = response!.body!.getReader(); let text = ''
+    for (let i = 0; i < 101; i++) text += new TextDecoder().decode((await reader.read()).value)
+    expect((text.match(/event: notification/g) ?? []).length).toBe(100)
+    await broker.handler(request('/companion/ack', credential, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seq: 1, eventId: events[0].eventId }) }))
+    text += new TextDecoder().decode((await reader.read()).value)
+    expect(text).toContain('id: 101'); await reader.cancel()
+  })
+  test('keeps an idle downstream stream alive with heartbeat frames', async () => {
+    const { store, credential } = await setup(); const broker = new ConsumerBroker(store, 1)
+    const response = await broker.handler(request('/companion/events', credential)); const reader = response!.body!.getReader(), decoder = new TextDecoder()
+    expect(decoder.decode((await reader.read()).value)).toContain('event: connected')
+    expect(decoder.decode((await reader.read()).value)).toContain('event: heartbeat'); await reader.cancel()
+  })
 })

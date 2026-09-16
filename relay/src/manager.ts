@@ -71,14 +71,16 @@ export class RelayManager {
     })
     await this.engine.start()
   }
-  async activateOfficial(receiverId: string): Promise<void> {
-    await this.store.update(s => { if (!s.config || s.config.receiverId !== receiverId) throw new Error('not configured'); s.sourceMode = 'officialHapi'; s.enabled = true; s.paused = false; delete s.credential; delete s.activation; s.health.stream = 'connected'; delete s.health.attentionCode })
+  async activateOfficial(receiverId: string, sourceReady: () => boolean = () => true, onCommitted: () => void = () => {}): Promise<void> {
+    if (!sourceReady()) throw new Error('official_source_not_live')
+    await this.store.update(s => { if (!s.config || s.config.receiverId !== receiverId) throw new Error('not configured'); s.sourceMode = 'officialHapi'; s.officialCutoverAt = this.now(); s.enabled = true; s.paused = false; delete s.credential; delete s.activation; s.health.stream = 'connected'; delete s.health.attentionCode })
+    onCommitted()
   }
   async pause(paused: boolean): Promise<void> { await this.store.update(s => { if (!s.activation && s.sourceMode !== 'officialHapi') throw new Error('not activated'); s.paused = paused }); await this.engine.start() }
   async resume(): Promise<void> { const s = await this.store.load(); if (!s.enabled || (!s.activation && s.sourceMode !== 'officialHapi')) throw new Error('not activated'); await this.engine.restart() }
   async remove(): Promise<void> {
     await this.engine.stop()
-    await this.store.update(s => { s.enabled = false; s.paused = false; delete s.config; delete s.credential; delete s.activation; delete s.sourceMode; s.handled = {}; s.health = { stream: 'stopped' } })
+    await this.store.update(s => { s.enabled = false; s.paused = false; delete s.config; delete s.credential; delete s.activation; delete s.sourceMode; delete s.officialCutoverAt; s.handled = {}; s.health = { stream: 'stopped' } })
   }
   async unpair(): Promise<void> { await this.remove(); await this.store.update(s => { delete s.managementTokenHash; delete s.bootstrap }) }
 }

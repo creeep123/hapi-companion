@@ -169,22 +169,27 @@ final class MobileNotificationController {
     func connectMacThroughRelay() async {
         guard !busy, let endpoint = validatedEndpoint(), let value = storedSecrets else { return }
         await perform {
-            if try await pairMacConsumerIfSupported(endpoint: endpoint, managementToken: value.managementToken) {
+            if try await pairMacConsumerIfSupported(endpoint: endpoint, managementToken: value.managementToken, force: true) {
                 persistSidecarMode(true)
                 message = "Mac 已连接 Sidecar，通知连接正在重启"
             } else { message = "当前 Relay 版本尚未提供官方 HAPI Sidecar" }
         }
     }
 
-    private func pairMacConsumerIfSupported(endpoint: URL, managementToken: String) async throws -> Bool {
+    private func pairMacConsumerIfSupported(endpoint: URL, managementToken: String, force: Bool = false) async throws -> Bool {
         guard let hubURL else { throw MobileRelayError.invalidResponse }
-        if (try? sidecarCredentials.load(hubURL)) != nil { return true }
+        if !force, let existing = try? sidecarCredentials.load(hubURL), CompanionConfiguration.sameOrigin(existing.hubURL, endpoint) { return true }
         let installationId = defaults.string(forKey: "companionInstallationId") ?? UUID().uuidString
         defaults.set(installationId, forKey: "companionInstallationId")
         guard let response = try await api.createSidecarConsumer(endpoint, managementToken, installationId, Host.current().localizedName ?? "Mac", hubURL) else { return false }
         guard response.contractVersion == 1,
               CompanionConfiguration.sameOrigin(response.publicHapiOrigin, hubURL),
               CompanionConfiguration.sameOrigin(response.sidecarAPIOrigin, endpoint) else { throw MobileRelayError.invalidResponse }
+        do { try await api.probeSidecarConsumer(response.sidecarAPIOrigin, response.consumerId, response.token) }
+        catch {
+            try? await api.revokeSidecarConsumer(endpoint, managementToken, response.consumerId)
+            throw error
+        }
         try sidecarCredentials.save(CompanionCredential(hubURL: response.sidecarAPIOrigin, deviceId: response.consumerId, token: response.token, publicHubURL: response.publicHapiOrigin, transportVersion: 2))
         await sidecarReady()
         return true

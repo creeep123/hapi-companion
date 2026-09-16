@@ -1,6 +1,6 @@
 # ADR 0008: Observe official HAPI from a Companion Sidecar
 
-**Status:** proposed  
+**Status:** accepted for implementation; production cutover pending
 **Date:** 2026-09-16
 
 ## Context
@@ -22,6 +22,8 @@ Use the current patch path during development and shadow verification. Cut over 
 This removes routine source-level coupling to HAPI releases while retaining live delivery and durable behavior after observation. A dedicated source/interpreter/store boundary localizes the remaining compatibility work to official API semantics. Independent consumers prevent a phone provider outage from delaying Mac alerts, or a sleeping Mac from delaying phone alerts.
 
 SQLite supplies the atomic relationship between source cursor, semantic deduplication, canonical event and per-consumer delivery. The prior JSON ledger cannot safely express independent cursors and rewrites the whole state file per event.
+
+The existing `0600` JSON store remains for low-frequency management and ntfy configuration, including the write-only topic. This keeps deployed pairing/configuration compatible and avoids a secret-copy migration. SQLite replaces only the event ledger, source cursor, catalog and per-consumer delivery state; those values share the transactions that require atomicity.
 
 The official source credential is installed only through a VM-local operation. Public pairing creates management and scoped consumer credentials; it cannot provision or reveal the HAPI token. Existing v1 Relay activation remains a legacy patched-mode protocol and is rejected with an upgrade-required response after official mode is active.
 

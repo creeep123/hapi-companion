@@ -35,10 +35,15 @@ private final class RelayURLProtocol: URLProtocol, @unchecked Sendable {
         case "/v1/test": body = #"{"accepted":true}"#
         case "/v1/activate": body = #"{"status":"committed"}"#
         case "/v2/consumers": body = #"{"consumerId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","token":"consumer-secret","publicHapiOrigin":"https://hapi.example","sidecarAPIOrigin":"https://relay.example","contractVersion":1}"#
+        case "/companion/status": body = #"{"version":1,"replayExpired":false,"replayAvailableFromSeq":0,"highWaterSeq":0}"#
+        case "/companion/sessions": body = #"{"version":1,"capabilities":{"turnDuration":true},"sessions":[]}"#
+        case "/companion/events": body = "event: connected\ndata: {}\n\n"
+        case "/v2/consumers/cccccccc-cccc-4ccc-8ccc-cccccccccccc": body = #"{"ok":true}"#
         case "/v1/pause", "/v1/resume", "/v1/receiver": body = #"{"ok":true}"#
         default: body = #"{"error":"unexpected"}"#
         }
-        let response = HTTPURLResponse(url: request.url!, statusCode: path.hasPrefix("/v1/") || path == "/v2/consumers" ? 200 : 404, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        let allowed = path.hasPrefix("/v1/") || path.hasPrefix("/v2/consumers") || path.hasPrefix("/companion/")
+        let response = HTTPURLResponse(url: request.url!, statusCode: allowed ? 200 : 404, httpVersion: nil, headerFields: ["Content-Type": path == "/companion/events" ? "text/event-stream" : "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
@@ -106,6 +111,8 @@ final class MobileRelayClientTests: XCTestCase, @unchecked Sendable {
         try await client.resume(endpoint: endpoint, token: "management")
         let consumer = try await client.createSidecarConsumer(endpoint: endpoint, token: "management", installationId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Mac", publicHapiOrigin: URL(string: "https://hapi.example")!)
         XCTAssertEqual(consumer?.contractVersion, 1)
+        try await client.probeSidecarConsumer(endpoint: endpoint, consumerId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", token: "consumer-secret")
+        try await client.revokeSidecarConsumer(endpoint: endpoint, managementToken: "management", consumerId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 
         let requests = RelayURLProtocol.recorder.requests()
         let statusRequest = try XCTUnwrap(requests.first { $0.url?.path == "/v1/status" })

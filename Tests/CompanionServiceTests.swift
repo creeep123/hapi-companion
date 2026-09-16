@@ -36,7 +36,7 @@ private final class ServiceStubState: @unchecked Sendable {
             guard request.value(forHTTPHeaderField: "X-Hapi-Device-Id") == "fixture-device",
                   request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-device-token",
                   request.url?.query == nil else { return (403, Data()) }
-            return (catalogStatus, Data(#"{"sessions":[{"id":"session-1","title":"真实会话","updatedAt":123,"active":true}],"capabilities":{"turnDuration":true}}"#.utf8))
+            return (catalogStatus, Data(#"{"version":1,"sessions":[{"id":"session-1","title":"真实会话","updatedAt":123,"active":true}],"capabilities":{"turnDuration":true}}"#.utf8))
         default:
             return (500, Data())
         }

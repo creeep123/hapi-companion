@@ -14,10 +14,16 @@ describe('NtfyConsumer', () => {
   test('posts independently and marks provider acceptance', async () => {
     let posts = 0; const { sidecar, worker } = await setup({ post: async () => { posts++ } }); const item = event(); sidecar.append({ sourceKey: 'one', event: item }, '1'); worker.start()
     for (let i = 0; i < 20 && posts === 0; i++) await Bun.sleep(5)
-    expect(posts).toBe(1); expect(sidecar.pending(worker.consumerId)).toEqual([]); worker.stop()
+    expect(posts).toBe(1); expect(sidecar.pending(worker.consumerId)).toEqual([]); await worker.stop()
   })
   test('policy suppression is terminal without provider post', async () => {
     let posts = 0; const { sidecar, state, worker } = await setup({ post: async () => { posts++ } }); await state.update(s => { s.config!.policy = { ...s.config!.policy, scope: 'specified', selectedSessionIds: [], keywords: [] } }); sidecar.append({ sourceKey: 'one', event: event() }, '1'); worker.start(); await Bun.sleep(20)
-    expect(posts).toBe(0); expect(sidecar.pending(worker.consumerId)).toEqual([]); worker.stop()
+    expect(posts).toBe(0); expect(sidecar.pending(worker.consumerId)).toEqual([]); await worker.stop()
+  })
+  test('drains more than one hundred pending phone deliveries', async () => {
+    let posts = 0; const { sidecar, worker } = await setup({ post: async () => { posts++ } })
+    for (let index = 0; index < 101; index++) sidecar.append({ sourceKey: `item-${index}`, event: event({ eventId: crypto.randomUUID() }) }, String(index))
+    worker.start(); for (let i = 0; i < 100 && posts < 101; i++) await Bun.sleep(5)
+    expect(posts).toBe(101); expect(sidecar.pending(worker.consumerId)).toEqual([]); await worker.stop()
   })
 })

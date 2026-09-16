@@ -5,8 +5,9 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 export class ConsumerBroker {
   private streams = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>()
   private sentThrough = new WeakMap<ReadableStreamDefaultController<Uint8Array>, number>()
+  private heartbeatTimers = new Map<ReadableStreamDefaultController<Uint8Array>, ReturnType<typeof setInterval>>()
   private encoder = new TextEncoder()
-  constructor(readonly store: SidecarStore) {}
+  constructor(readonly store: SidecarStore, private readonly heartbeatMs = 25_000) {}
 
   handler = async (request: Request): Promise<Response | undefined> => {
     const url = new URL(request.url)
@@ -20,6 +21,7 @@ export class ConsumerBroker {
       const body = await limitedObject(request)
       if (!Number.isSafeInteger(body.seq) || Number(body.seq) <= 0 || typeof body.eventId !== 'string') return json({ error: 'invalid_ack' }, 400)
       const result = this.store.ack(consumerId, Number(body.seq), body.eventId)
+      if (result !== 'conflict') this.signal(consumerId)
       return result === 'conflict' ? json({ error: 'ack_conflict' }, 409) : json({ ok: true })
     }
     if (request.method === 'DELETE' && url.pathname === '/companion/consumer') { this.closeConsumer(consumerId); this.store.revokeConsumer(consumerId); return json({ ok: true }) }
@@ -33,12 +35,14 @@ export class ConsumerBroker {
   }
 
   private stream(consumerId: string, signal: AbortSignal): Response {
+    this.closeConsumer(consumerId)
     let controllerRef: ReadableStreamDefaultController<Uint8Array> | undefined
     const body = new ReadableStream<Uint8Array>({
       start: controller => {
         controllerRef = controller; let set = this.streams.get(consumerId)
         if (!set) { set = new Set(); this.streams.set(consumerId, set) }
         set.add(controller); controller.enqueue(this.encoder.encode('event: connected\ndata: {}\n\n')); this.flush(consumerId, controller)
+        this.heartbeatTimers.set(controller, setInterval(() => { try { controller.enqueue(this.encoder.encode('event: heartbeat\ndata: {}\n\n')) } catch { this.remove(consumerId, controller) } }, this.heartbeatMs))
       },
       cancel: () => { if (controllerRef) this.remove(consumerId, controllerRef) }
     })
@@ -49,8 +53,8 @@ export class ConsumerBroker {
     try { for (const item of this.store.pending(id, 100)) if (item.seq > (this.sentThrough.get(controller) ?? 0)) { controller.enqueue(this.encoder.encode(`id: ${item.seq}\nevent: notification\ndata: ${JSON.stringify(item.event)}\n\n`)); this.sentThrough.set(controller, item.seq) } }
     catch { this.remove(id, controller); try { controller.error(new Error('stream_failed')) } catch {} }
   }
-  private remove(id: string, controller: ReadableStreamDefaultController<Uint8Array>) { const set = this.streams.get(id); set?.delete(controller); if (set?.size === 0) this.streams.delete(id) }
-  private closeConsumer(id: string) { for (const controller of this.streams.get(id) ?? []) try { controller.close() } catch {}; this.streams.delete(id) }
+  private remove(id: string, controller: ReadableStreamDefaultController<Uint8Array>) { const timer = this.heartbeatTimers.get(controller); if (timer) clearInterval(timer); this.heartbeatTimers.delete(controller); const set = this.streams.get(id); set?.delete(controller); if (set?.size === 0) this.streams.delete(id) }
+  private closeConsumer(id: string) { for (const controller of this.streams.get(id) ?? []) { this.remove(id, controller); try { controller.close() } catch {} }; this.streams.delete(id) }
 }
 
 async function limitedObject(request: Request): Promise<Record<string, unknown>> {

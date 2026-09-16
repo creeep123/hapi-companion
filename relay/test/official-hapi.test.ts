@@ -10,6 +10,13 @@ describe('OfficialSSEParser', () => {
 })
 
 describe('OfficialHapiClient', () => {
+  test('derives namespace identity from the authenticated JWT while keeping the access token opaque', async () => {
+    const payload = Buffer.from(JSON.stringify({ uid: 1, ns: 'team:alpha' })).toString('base64url')
+    let receivedBody = ''
+    const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => { receivedBody = String(init?.body); return Response.json({ token: `header.${payload}.signature-long-enough` }) }
+    const client = new OfficialHapiClient('https://hapi.example', 'opaque:team:alpha', fetcher as any)
+    expect(await client.namespace()).toBe('team:alpha'); expect(JSON.parse(receivedBody)).toEqual({ accessToken: 'opaque:team:alpha' })
+  })
   test('authenticates once, loads catalog, and refreshes once after 401', async () => {
     let auth = 0, sessions = 0
     const fetcher = async (input: RequestInfo | URL): Promise<Response> => {
@@ -37,11 +44,30 @@ describe('OfficialHapiClient', () => {
     ])
   })
 
+  test('unwraps the official session detail envelope', async () => {
+    const fetcher = async (input: RequestInfo | URL): Promise<Response> => {
+      const path = new URL(String(input)).pathname
+      if (path === '/api/auth') return Response.json({ token: `jwt-${'x'.repeat(20)}` })
+      return Response.json({ session: { id: 's1', active: true, agentState: { requests: {} } } })
+    }
+    const client = new OfficialHapiClient('https://hapi.example', 'secret', fetcher as any)
+    expect(await client.session('s1')).toMatchObject({ id: 's1', active: true })
+  })
+
   test('fails closed when connected verdict is absent', async () => {
     const fetcher = async (input: RequestInfo | URL): Promise<Response> => new URL(String(input)).pathname === '/api/auth'
       ? Response.json({ token: `jwt-${'x'.repeat(20)}` })
       : new Response('id: 1\ndata: {"type":"heartbeat"}\n\n', { headers: { 'content-type': 'text/event-stream' } })
     const client = new OfficialHapiClient('https://hapi.example', 'secret', fetcher as any)
     await expect((async () => { for await (const _ of client.events(undefined, new AbortController().signal)) {} })()).rejects.toBeInstanceOf(OfficialHapiError)
+  })
+  test('reconnects when an authenticated SSE stream becomes inactive', async () => {
+    const encoder = new TextEncoder()
+    const fetcher = async (input: RequestInfo | URL) => String(input).endsWith('/api/auth')
+      ? Response.json({ token: 'x'.repeat(32) })
+      : new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode('data: {"type":"connection-changed","data":{"status":"connected","resume":"ok"}}\n\n')) } }), { headers: { 'content-type': 'text/event-stream' } })
+    const iterator = new OfficialHapiClient('https://hapi.example', 'access-token-long-enough', fetcher as any, () => 0, 5).events(undefined, new AbortController().signal)[Symbol.asyncIterator]()
+    expect((await iterator.next()).value?.type).toBe('connected')
+    await expect(iterator.next()).rejects.toThrow('stream_ended')
   })
 })

@@ -75,11 +75,16 @@ actor CompanionService {
                     attempt = 0
                 } catch CompanionServiceError.deviceUnauthorized {
                     CompanionLog.error("device credential rejected")
-                    if let hub = try? loadConfiguration().hubURL { try? sidecarKeychain.delete(hub) }
-                    try? keychain.delete()
-                    await onStatus("设备凭证已失效，将重新配对…")
+                    let hub = try? loadConfiguration().hubURL
+                    let sidecarInvalid = hub.flatMap { try? sidecarKeychain.load($0) } != nil
+                    if sidecarInvalid {
+                        await onStatus("Sidecar 设备凭证已失效；请在 Relay 设置中重新连接 Mac")
+                    } else {
+                        try? keychain.delete()
+                        await onStatus("设备凭证已失效，将重新配对…")
+                    }
                     attempt += 1
-                    try? await Task.sleep(for: .seconds(min(30, max(2, 1 << min(attempt, 5)))))
+                    try? await Task.sleep(for: .seconds(sidecarInvalid ? 60 : min(30, max(2, 1 << min(attempt, 5)))))
                 } catch CompanionServiceError.pairingUnauthorized {
                     CompanionLog.error("pairing credential rejected")
                     await onStatus("HAPI 登录已失效；修复 CLI 登录后会自动重试")

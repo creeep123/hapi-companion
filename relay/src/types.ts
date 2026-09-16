@@ -22,6 +22,7 @@ export type AttentionCode = 'hub_unauthorized' | 'hub_contract_invalid' | 'hub_s
 export type PersistedState = {
   schemaVersion: 1; managementTokenHash?: string
   sourceMode?: 'patchedHub' | 'officialHapi'
+  officialCutoverAt?: number
   bootstrap?: { hash: string; expiresAt: number; failures: number; sources: Record<string, number> }
   config?: RelayConfig; credential?: HubCredential; activation?: Activation
   enabled: boolean; paused: boolean; handled: Record<string, { seq: number; at: number; reason: 'posted' | 'suppressed' | 'paused' }>
@@ -40,6 +41,7 @@ export type OfficialSessionSummary = {
   id: string; title?: string; active?: boolean; thinking?: boolean
   activeTurnStartedAt?: number | null; updatedAt?: number
   pendingRequestsCount?: number; machineId?: string
+  metadata?: { name?: string; machineId?: string; flavor?: string | null; path?: string } | null
 }
 export type OfficialRequest = { id: string; tool?: string; arguments?: unknown }
 export type OfficialSession = OfficialSessionSummary & {
@@ -50,3 +52,8 @@ export type OfficialSyncEvent = {
   message?: unknown; namespace?: string
 }
 export type OfficialFrame = { id?: string; event: OfficialSyncEvent }
+export type OfficialMessage = { id?: string; seq: number; createdAt: number; invokedAt?: number | null; content: unknown }
+export type OfficialMessagesPage = {
+  messages: OfficialMessage[]
+  page: { epoch: number; reset: boolean; nextAfterSeq: number | null; nextAfterAt: number | null; snapshotHeadSeq: number | null; snapshotHeadAt: number | null; hasMore: boolean }
+}

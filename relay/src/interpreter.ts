@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { CompanionEvent, OfficialRequest, OfficialSession, OfficialSyncEvent } from './types'
+import type { CompanionEvent, OfficialMessage, OfficialMessagesPage, OfficialRequest, OfficialSession, OfficialSyncEvent } from './types'
 
 const INPUT_TOOLS = new Set(['request_user_input', 'AskUserQuestion', 'ask_user_question', 'CursorAskQuestion'])
 const COMPLETE = new Set(['completed', 'complete', 'done', 'success'])
@@ -8,8 +8,14 @@ const FAILURE = new Set(['failed', 'error', 'killed', 'aborted'])
 type Snapshot = {
   session: OfficialSession; requestIds: Set<string>; turnStartedAt?: number
   frozenDurationMs?: number; lastReadyAt?: number; lastTaskCompletionAt?: number
+  messageEpoch?: number; messageAt?: number; messageSeq?: number
 }
 export type Candidate = { sourceKey: string; event: CompanionEvent }
+export type InterpreterState = { version: 1; sessions: Array<{
+  session: OfficialSession; requestIds: string[]; turnStartedAt?: number
+  frozenDurationMs?: number; lastReadyAt?: number; lastTaskCompletionAt?: number
+  messageEpoch?: number; messageAt?: number; messageSeq?: number
+}> }
 
 export class EventInterpreter {
   private snapshots = new Map<string, Snapshot>()
@@ -21,6 +27,76 @@ export class EventInterpreter {
   baseline(sessions: OfficialSession[]): void {
     this.snapshots.clear()
     for (const session of sessions) this.snapshots.set(session.id, this.makeSnapshot(session))
+  }
+
+  exportState(): InterpreterState {
+    return { version: 1, sessions: [...this.snapshots.values()].map(snapshot => ({
+      session: persistedSession(snapshot.session), requestIds: [...snapshot.requestIds],
+      ...(snapshot.turnStartedAt !== undefined ? { turnStartedAt: snapshot.turnStartedAt } : {}),
+      ...(snapshot.frozenDurationMs !== undefined ? { frozenDurationMs: snapshot.frozenDurationMs } : {}),
+      ...(snapshot.lastReadyAt !== undefined ? { lastReadyAt: snapshot.lastReadyAt } : {}),
+      ...(snapshot.lastTaskCompletionAt !== undefined ? { lastTaskCompletionAt: snapshot.lastTaskCompletionAt } : {})
+      , ...(snapshot.messageEpoch !== undefined ? { messageEpoch: snapshot.messageEpoch } : {})
+      , ...(snapshot.messageAt !== undefined ? { messageAt: snapshot.messageAt } : {})
+      , ...(snapshot.messageSeq !== undefined ? { messageSeq: snapshot.messageSeq } : {})
+    })) }
+  }
+
+  messageCursor(sessionId: string): { epoch: number; at: number; seq: number } | undefined {
+    const value = this.snapshots.get(sessionId)
+    return value?.messageEpoch !== undefined && value.messageAt !== undefined && value.messageSeq !== undefined
+      ? { epoch: value.messageEpoch, at: value.messageAt, seq: value.messageSeq } : undefined
+  }
+
+  baselineMessages(sessionId: string, page: OfficialMessagesPage): void {
+    const snapshot = this.snapshots.get(sessionId); if (!snapshot) return
+    snapshot.messageEpoch = page.page.epoch
+    if (page.page.snapshotHeadAt !== null && page.page.snapshotHeadSeq !== null) {
+      snapshot.messageAt = page.page.snapshotHeadAt; snapshot.messageSeq = page.page.snapshotHeadSeq
+    } else { snapshot.messageAt = 0; snapshot.messageSeq = 0 }
+  }
+
+  observeMessages(sessionId: string, page: OfficialMessagesPage): Candidate[] {
+    const snapshot = this.snapshots.get(sessionId); if (!snapshot) return []
+    const current = this.messageCursor(sessionId)
+    if (page.page.reset || (current && current.epoch !== page.page.epoch)) { this.baselineMessages(sessionId, page); return [] }
+    const candidates: Candidate[] = []
+    for (const message of page.messages) {
+      const at = message.invokedAt ?? message.createdAt
+      candidates.push(...this.observe({ type: 'message-received', sessionId, message }, `message:${page.page.epoch}:${at}:${message.seq}`))
+    }
+    const at = page.page.nextAfterAt ?? page.page.snapshotHeadAt
+    const seq = page.page.nextAfterSeq ?? page.page.snapshotHeadSeq
+    snapshot.messageEpoch = page.page.epoch
+    if (at !== null && seq !== null) { snapshot.messageAt = at; snapshot.messageSeq = seq }
+    return candidates
+  }
+
+  liveMessageIdentity(sessionId: string, message: unknown, fallback: string): string {
+    if (!isObject(message) || !Number.isSafeInteger(message.seq) || !Number.isSafeInteger(message.createdAt)) return fallback
+    const snapshot = this.snapshots.get(sessionId), at = Number.isSafeInteger(message.invokedAt) ? Number(message.invokedAt) : Number(message.createdAt)
+    if (snapshot?.messageEpoch !== undefined) { snapshot.messageAt = at; snapshot.messageSeq = Number(message.seq) }
+    return `message:${snapshot?.messageEpoch ?? 'live'}:${at}:${message.seq}`
+  }
+
+  enrichReady(candidates: Candidate[], messages: OfficialMessage[]): Candidate[] {
+    const text = [...messages].reverse().map(message => extractAssistantText(message)).find(Boolean)
+    if (!text) return candidates
+    const summary = extractNotifySummary(text)
+    return candidates.map(candidate => candidate.event.kind !== 'ready' ? candidate : ({ ...candidate, event: {
+      ...candidate.event, title: `${agentName(this.snapshots.get(candidate.event.sessionId)?.session ?? { id: candidate.event.sessionId })} - ${candidate.event.sessionName}`,
+      body: summary ? [truncate(summary.summary, 280), summary.action ? truncate(`-> ${summary.action}`, 280) : ''].filter(Boolean).join('\n') : truncate(text, 280)
+    } }))
+  }
+
+  restoreState(state: InterpreterState): void {
+    if (state.version !== 1 || !Array.isArray(state.sessions)) throw new Error('invalid_interpreter_state')
+    const restored = new Map<string, Snapshot>()
+    for (const value of state.sessions) {
+      if (!value?.session || typeof value.session.id !== 'string' || !Array.isArray(value.requestIds)) throw new Error('invalid_interpreter_state')
+      restored.set(value.session.id, { ...value, requestIds: new Set(value.requestIds) })
+    }
+    this.snapshots = restored
   }
 
   observeSession(session: OfficialSession, sourceIdentity: string): Candidate[] {
@@ -68,7 +144,7 @@ export class EventInterpreter {
     let turnStartedAt = prior?.turnStartedAt, frozenDurationMs = prior?.frozenDurationMs
     if (session.thinking && validTime(session.activeTurnStartedAt)) { turnStartedAt = session.activeTurnStartedAt; frozenDurationMs = undefined }
     else if (prior?.session.thinking && !session.thinking && prior.turnStartedAt !== undefined) { frozenDurationMs = Math.max(0, this.now() - prior.turnStartedAt); turnStartedAt = undefined }
-    return { session, requestIds: new Set(requests(session).map(r => r.id)), turnStartedAt, frozenDurationMs, lastReadyAt: prior?.lastReadyAt, lastTaskCompletionAt: prior?.lastTaskCompletionAt }
+    return { session, requestIds: new Set(requests(session).map(r => r.id)), turnStartedAt, frozenDurationMs, lastReadyAt: prior?.lastReadyAt, lastTaskCompletionAt: prior?.lastTaskCompletionAt, messageEpoch: prior?.messageEpoch, messageAt: prior?.messageAt, messageSeq: prior?.messageSeq }
   }
 
   private requestCandidate(session: OfficialSession, request: OfficialRequest, _sourceIdentity: string): Candidate {
@@ -85,8 +161,8 @@ export class EventInterpreter {
       version: 1, eventId: deterministicUUID(sourceKey), createdAt: this.now(), kind,
       title: truncate(title, 4096), body: truncate(body, 65_536), severity,
       sessionId: session.id, sessionName: truncate(sessionName(session), 4096),
-      ...(session.machineId ? { machineId: session.machineId } : {}),
-      url: `/sessions/${encodeURIComponent(session.id)}`,
+      ...(session.metadata?.machineId || session.machineId ? { machineId: session.metadata?.machineId ?? session.machineId } : {}),
+      url: new URL(`/sessions/${encodeURIComponent(session.id)}`, this.publicOrigin).toString(),
       ...(requestId ? { requestId } : {}), ...(durationMs !== undefined ? { durationMs: Math.floor(durationMs) } : {})
     } }
   }
@@ -136,8 +212,26 @@ function requests(session: OfficialSession): OfficialRequest[] {
   if (!isObject(value)) return []
   return Object.entries(value).map(([id, item]) => ({ id, ...(isObject(item) ? item : {}) })) as OfficialRequest[]
 }
-function sessionName(session: OfficialSession) { return session.title?.trim() || 'HAPI session' }
-function agentName(session: OfficialSession) { const value = (session as any).metadata?.agent ?? (session as any).agent ?? 'HAPI'; return typeof value === 'string' && value.trim() ? value.trim() : 'HAPI' }
+function persistedSession(session: OfficialSession): OfficialSession {
+  const pending = requests(session).map(request => ({ id: request.id, ...(request.tool ? { tool: request.tool } : {}) }))
+  return {
+    id: session.id,
+    ...(session.title !== undefined ? { title: session.title } : {}),
+    ...(session.active !== undefined ? { active: session.active } : {}),
+    ...(session.thinking !== undefined ? { thinking: session.thinking } : {}),
+    ...(session.activeTurnStartedAt !== undefined ? { activeTurnStartedAt: session.activeTurnStartedAt } : {}),
+    ...(session.updatedAt !== undefined ? { updatedAt: session.updatedAt } : {}),
+    ...(session.machineId !== undefined ? { machineId: session.machineId } : {}),
+    ...(session.metadata ? { metadata: {
+      ...(session.metadata.name !== undefined ? { name: session.metadata.name } : {}),
+      ...(session.metadata.machineId !== undefined ? { machineId: session.metadata.machineId } : {}),
+      ...(session.metadata.flavor !== undefined ? { flavor: session.metadata.flavor } : {})
+    } } : {}),
+    ...(pending.length ? { agentState: { requests: pending } } : {})
+  }
+}
+function sessionName(session: OfficialSession) { return session.metadata?.name?.trim() || session.title?.trim() || 'HAPI session' }
+function agentName(session: OfficialSession) { const value = session.metadata?.flavor ?? (session as any).agent ?? 'HAPI'; return typeof value === 'string' && value.trim() ? value.trim() : 'HAPI' }
 function truncate(value: string, limit: number) { const text = value.trim(); return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 3)).trimEnd()}...` }
 function deterministicUUID(value: string): string { const h = createHash('sha256').update(value).digest('hex'); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}` }
 function validTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 }

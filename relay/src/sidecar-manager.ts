@@ -3,10 +3,11 @@ import type { SidecarStore } from './sidecar-store'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 export class SidecarManager {
-  constructor(private legacy: RelayManager, private store: SidecarStore, private publicOrigin: string, private sidecarOrigin: string) {}
+  constructor(private legacy: RelayManager, private store: SidecarStore, private publicOrigin: string, private sidecarOrigin: string, private sourceReady = () => true, private activateDelivery = () => {}) {}
   authorized(token: string) { return this.legacy.authorized(token) }
+  async status() { const state = await this.legacy.store.load(); return { version: 2, source: this.store.sourceStatus(), delivery: { enabled: state.enabled && state.sourceMode === 'officialHapi', cutoverAt: state.officialCutoverAt ?? null } } }
   configure(input: unknown, expectedRevision: number) { return this.legacy.configure(input, expectedRevision) }
-  activateNtfy(receiverId: string) { return this.legacy.activateOfficial(receiverId) }
+  activateNtfy(receiverId: string) { return this.legacy.activateOfficial(receiverId, this.sourceReady, this.activateDelivery) }
   createConsumer(input: unknown) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid_consumer')
     const value = input as Record<string, unknown>

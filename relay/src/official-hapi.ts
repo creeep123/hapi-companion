@@ -1,5 +1,5 @@
 import type { Fetcher } from './ntfy'
-import type { OfficialFrame, OfficialSession, OfficialSessionSummary, OfficialSyncEvent } from './types'
+import type { OfficialFrame, OfficialMessagesPage, OfficialSession, OfficialSessionSummary, OfficialSyncEvent } from './types'
 
 export type ResumeVerdict = 'ok' | 'gap'
 export type OfficialConnected = { resume: ResumeVerdict; subscriptionId?: string }
@@ -18,7 +18,8 @@ export class OfficialHapiClient {
     readonly origin: string,
     private readonly accessToken: string,
     private readonly fetcher: Fetcher = fetch,
-    private readonly now = () => Date.now()
+    private readonly now = () => Date.now(),
+    private readonly inactivityMs = 75_000
   ) {
     const url = new URL(origin)
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password || url.search || url.hash) throw new Error('invalid_hapi_origin')
@@ -43,12 +44,28 @@ export class OfficialHapiClient {
     try { return await task } finally { if (this.authTask === task) this.authTask = undefined }
   }
 
-  private async request(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
+  async namespace(): Promise<string> {
+    const token = await this.authenticate(), part = token.split('.')[1]
+    if (!part) throw new OfficialHapiError('contract_invalid', true)
+    try {
+      const payload = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'))
+      if (typeof payload?.ns !== 'string' || !payload.ns.trim() || payload.ns !== payload.ns.trim() || payload.ns.length > 256) throw new Error('invalid namespace')
+      return payload.ns
+    } catch { throw new OfficialHapiError('contract_invalid', true) }
+  }
+
+  private async request(path: string, init: RequestInit = {}, retry = true, streaming = false): Promise<Response> {
     const token = await this.authenticate()
-    const response = await this.fetcher(new URL(path, this.origin), { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
+    const connectController = new AbortController()
+    const timeout = streaming ? connectController.signal : AbortSignal.timeout(15_000)
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    const timer = streaming ? setTimeout(() => connectController.abort(new DOMException('timed out', 'TimeoutError')), 15_000) : undefined
+    let response: Response
+    try { response = await this.fetcher(new URL(path, this.origin), { ...init, signal, headers: { ...init.headers, Authorization: `Bearer ${token}` } }) }
+    finally { if (timer) clearTimeout(timer) }
     if ((response.status === 401 || response.status === 403) && retry) {
       this.jwt = undefined
-      return this.request(path, init, false)
+      return this.request(path, init, false, streaming)
     }
     if (response.status === 401 || response.status === 403) throw new OfficialHapiError('unauthorized', true)
     if (!response.ok) throw new OfficialHapiError('unavailable')
@@ -56,7 +73,7 @@ export class OfficialHapiClient {
   }
 
   async catalog(signal?: AbortSignal): Promise<OfficialSessionSummary[]> {
-    const response = await this.request('/api/sessions?order=updatedAt&limit=500', { signal })
+    const response = await this.request('/api/sessions?order=updatedAt', { signal })
     const value = await response.json().catch(() => null) as any
     const sessions = Array.isArray(value) ? value : value?.sessions
     if (!Array.isArray(sessions)) throw new OfficialHapiError('contract_invalid', true)
@@ -65,24 +82,30 @@ export class OfficialHapiClient {
 
   async session(id: string, signal?: AbortSignal): Promise<OfficialSession> {
     const response = await this.request(`/api/sessions/${encodeURIComponent(id)}`, { signal })
-    return parseSession(await response.json().catch(() => null))
+    const value = await response.json().catch(() => null) as any
+    return parseSession(value?.session)
   }
 
-  async messages(id: string, query: { afterAt?: number; afterSeq?: number; epoch?: string; latest?: number } = {}, signal?: AbortSignal): Promise<unknown> {
+  async messages(id: string, query: { afterAt?: number; afterSeq?: number; untilAt?: number; untilSeq?: number; epoch?: number; limit?: number } = {}, signal?: AbortSignal): Promise<OfficialMessagesPage> {
     const url = new URL(`/api/sessions/${encodeURIComponent(id)}/messages`, this.origin)
     for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, String(value))
-    return this.request(`${url.pathname}${url.search}`, { signal }).then(r => r.json())
+    const value = await this.request(`${url.pathname}${url.search}`, { signal }).then(r => r.json()).catch(() => null) as any
+    if (!isObject(value) || !Array.isArray(value.messages) || !isObject(value.page) || !Number.isSafeInteger(value.page.epoch)) throw new OfficialHapiError('contract_invalid', true)
+    for (const message of value.messages) if (!isObject(message) || !Number.isSafeInteger(message.seq) || !Number.isSafeInteger(message.createdAt) || !('content' in message)) throw new OfficialHapiError('contract_invalid', true)
+    for (const field of ['nextAfterSeq', 'nextAfterAt', 'snapshotHeadSeq', 'snapshotHeadAt']) if (value.page[field] !== null && !Number.isSafeInteger(value.page[field])) throw new OfficialHapiError('contract_invalid', true)
+    if (typeof value.page.reset !== 'boolean' || typeof value.page.hasMore !== 'boolean') throw new OfficialHapiError('contract_invalid', true)
+    return value as OfficialMessagesPage
   }
 
   async *events(lastEventId: string | undefined, signal: AbortSignal): AsyncGenerator<OfficialStreamItem> {
-    const headers: Record<string, string> = { Accept: 'text/event-stream' }
+    const headers: Record<string, string> = { Accept: 'text/event-stream', 'Accept-Encoding': 'identity' }
     if (lastEventId) headers['Last-Event-ID'] = lastEventId
-    const response = await this.request('/api/events?all=true&visibility=hidden', { headers, signal })
+    const response = await this.request('/api/events?all=true&visibility=hidden', { headers, signal }, true, true)
     if (!response.body || !response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) throw new OfficialHapiError('contract_invalid', true)
     const parser = new OfficialSSEParser(), reader = response.body.getReader(); let first = true
     try {
       while (true) {
-        const next = await reader.read()
+        const next = await withInactivityTimeout(reader.read(), this.inactivityMs)
         if (next.done) throw new OfficialHapiError('stream_ended')
         for (const frame of parser.append(next.value)) {
           const event = parseSyncEvent(frame.data)
@@ -98,6 +121,16 @@ export class OfficialHapiClient {
       }
     } finally { await reader.cancel().catch(() => undefined) }
   }
+}
+
+async function withInactivityTimeout<T>(operation: Promise<T>, milliseconds: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new OfficialHapiError('stream_ended')), milliseconds) })
+    ])
+  } finally { if (timer) clearTimeout(timer) }
 }
 
 export type RawSSEFrame = { id?: string; data: string }

@@ -11,6 +11,7 @@ export function createSidecarHandler(broker: ConsumerBroker, manager: SidecarMan
       if (!url.pathname.startsWith('/v2/')) return legacy(request)
       const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1] ?? ''
       if (!await manager.authorized(token)) return json({ error: 'unauthorized' }, 401)
+      if (request.method === 'GET' && url.pathname === '/v2/status') return json(await manager.status())
       if (request.method === 'POST' && url.pathname === '/v2/consumers') return json(manager.createConsumer(await objectBody(request)), 201)
       if (request.method === 'PUT' && url.pathname === '/v2/config') { const body = await objectBody(request); if (!Number.isSafeInteger(body.expectedRevision)) throw new Error('invalid_config_request'); const config = await manager.configure(body.config, Number(body.expectedRevision)); return json({ revision: config.revision }) }
       if (request.method === 'POST' && url.pathname === '/v2/receivers/ntfy') { const body = await objectBody(request); if (typeof body.receiverId !== 'string') throw new Error('invalid_receiver'); await manager.activateNtfy(body.receiverId); return json({ ok: true }) }

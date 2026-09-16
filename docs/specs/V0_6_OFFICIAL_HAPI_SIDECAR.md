@@ -1,6 +1,6 @@
 # V0.6 Official-HAPI Sidecar
 
-**Status:** design candidate  
+**Status:** implementation candidate; production unchanged
 **Owner:** HAPI Companion  
 **Official HAPI baseline used for design:** `tiann/hapi@0239edf38e2da653d662f31039e24ccea04c7837` (v0.30.7)  
 **Production impact of this work:** none until a separately authorized migration
@@ -181,7 +181,7 @@ Normalize completion status and bounded summary. Malformed structured content is
 
 ### 6.4 Input and permission request
 
-After a session-added or session-updated observation, fetch full session detail when the summary indicates request changes. Compare the new request-ID set with the stored set, debounce for 500 ms, and notify only new IDs.
+After a session-added or session-updated observation, fetch full session detail and compare the new request-ID set with the stored set. When a new request first appears, wait 500 ms and fetch detail again; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately.
 
 After removing an optional `functions.` prefix, these tools are input requests: `request_user_input`, `AskUserQuestion`, `ask_user_question`, and `CursorAskQuestion`. Other tools are permission requests. The full request object is authoritative; catalog request-kind summaries are insufficient.
 
@@ -191,19 +191,18 @@ Record a turn start only from `thinking=true` plus a valid `activeTurnStartedAt`
 
 ### 6.6 Identity, deduplication and URL
 
-A canonical `eventId` is deterministically derived from namespace identity hash, session ID, stable source identity (official event ID, message cursor, request ID or transition generation), and semantic kind. The original official event ID is retained only as non-secret diagnostic metadata.
+A canonical `eventId` is deterministically derived from namespace identity hash, session ID, stable source identity (official event ID, message cursor or request ID), and semantic kind. Raw official frames and event IDs are not copied into notification payloads.
 
 Normative source dedupe keys are:
 
 | Kind | Source key |
 |---|---|
 | ready/task recovered from message | `namespaceHash/sessionId/messageEpoch/messageAt/messageSeq/kind` |
-| live ready/task without message cursor | `namespaceHash/hapiProcessEpoch/officialEventId/kind` |
+| live ready/task without a known message epoch | `namespaceHash/sessionId/officialEventId/kind` |
 | input/permission | `namespaceHash/sessionId/requestId/kind` |
-| explicit completion | `namespaceHash/hapiProcessEpoch/officialEventId/session-completed` |
-| reconciled ready | `namespaceHash/sessionId/priorTurnStartedAt/newSnapshotGeneration/ready-reconcile` |
+| explicit completion | `namespaceHash/sessionId/officialEventId/session-completed` |
 
-`hapiProcessEpoch` is the epoch encoded by official SSE IDs and persisted with the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful gap reconciliation. Message position is the official tuple `(epoch, at, seq)`, never a synthetic scalar. An official ready/task message cancels a provisional reconcile candidate for the same session and prior turn before either is committed. After a message epoch reset, the adapter establishes a new watermark from `snapshotHead`; it never re-emits older latest messages. Source dedupe rows outlive notification retention for 45 days so a late replay cannot recreate an expired notification.
+The official SSE ID is persisted as the source cursor. `snapshotGeneration` is a monotonically increasing Sidecar integer committed after each successful catalog replacement. Message position is the official tuple `(epoch, at, seq)`, never a synthetic scalar. After a message epoch reset, the adapter establishes a new watermark from `snapshotHead`; it never re-emits older latest messages. Source dedupe rows outlive notification retention for 45 days so a late replay cannot recreate an expired notification.
 
 The URL is always:
 
@@ -225,17 +224,17 @@ REST snapshots are not globally atomic. To avoid losing or duplicating events du
 
 1. Open SSE first and buffer frames after its connected handshake.
 2. Fetch the session catalog and required full-session details.
-3. Compare the new snapshot with the stored generation and create provisional recovery candidates.
+3. Compare the new snapshot with the durable interpreter checkpoint and identify newly visible request IDs.
 4. Fetch messages after known per-session cursors where possible.
-5. Apply buffered SSE frames in order. Explicit ready/task/end events or matching request IDs cancel weaker provisional candidates.
-6. Commit remaining recovery candidates and the new snapshot, then enter live mode.
+5. Atomically commit recovered candidates, catalog and interpreter checkpoint.
+6. Apply buffered SSE frames in order. Durable source keys suppress anything already recovered, then enter live mode.
 
 The reconciliation buffer is capped at 2,048 frames and 8 MiB encoded, whichever is reached first. Overflow aborts the uncommitted snapshot/candidates, closes the stream, records `source_reconcile_overflow`, and reconnects from the last committed SSE cursor after backoff. The source remains non-live and creates no deliveries until a complete reconciliation succeeds. Detail/message fetch concurrency is capped at eight and each request has a 15-second deadline.
 
 Safe recovery behavior:
 
 - newly visible request IDs may generate input/permission notifications;
-- a prior known running turn that is now idle may generate a low-confidence ready only when no explicit ready was recovered;
+- ready/task notifications are recovered only from official messages after a known message cursor;
 - active-to-inactive without an end reason does not generate completion;
 - cold start establishes a baseline and does not notify historical idle sessions or old requests.
 
@@ -249,22 +248,21 @@ Minimum schema:
 |---|---|
 | `schema_meta` | Sidecar schema version and migration state |
 | `source_binding` | HAPI origin, namespace hash, last event ID, snapshot generation and health code |
-| `session_snapshots` | Bounded aggregate and message watermarks per session |
+| `interpreter_state` | Versioned bounded session aggregates and official message watermarks, transactionally checkpointed with the source cursor |
 | `source_dedup` | Stable interpreted source keys |
 | `canonical_notifications` | Monotonic sequence, version 1 event payload and retention metadata |
 | `consumers` | Mac/ntfy identity, credential hash, enabled state and ACK cursor |
 | `deliveries` | Per-notification, per-consumer pending/terminal state and attempts |
-| `mobile_config` | Existing policy/config revision without secret topic material |
-| `management` | Hashed management/bootstrap credentials and rate-limit state |
+The existing private JSON `StateStore` remains the control-plane store for management/bootstrap hashes, the ntfy topic, policy and configuration revision. It is not used for canonical events or consumer cursors. Keeping that already-deployed format avoids copying secrets during migration and preserves rollback byte-for-byte. SQLite owns only source observation, catalog, canonical events and delivery state; no correctness operation requires a transaction across the two stores.
 
 Retention has two bounds:
 
 - terminal deliveries and their notification payloads are retained for a seven-day diagnostic grace;
 - every notification and delivery has a hard 35-day expiry, including unacknowledged Mac rows.
 
-An enabled consumer lease expires after 45 days without an authenticated catalog, stream, status or ACK request. Expiring a consumer disables future targeting; its existing rows remain eligible only until the notification's hard expiry. On reconnect after replay expiry, the broker returns the unchanged connected frame, advances that consumer to the current high-water mark, exposes `replayExpired=true` through `GET /companion/status`, and begins with new events. It never pretends the expired range was ACKed. A successful explicit re-pair or user acknowledgement of the warning clears the flag; merely opening the stream does not.
+An enabled consumer lease expires after 45 days without an authenticated catalog, stream, status or ACK request. Expiring a consumer disables future targeting; its existing rows remain eligible only until the notification's hard expiry. On reconnect after replay expiry, the broker returns the unchanged connected frame, advances that consumer to the current high-water mark, exposes `replayExpired=true` through `GET /companion/status`, and begins with new events. It never pretends the expired range was ACKed. Explicit re-pairing creates a new consumer without the old consumer's warning; merely opening the old stream does not clear it.
 
-Database plus WAL has a 100 MiB operational ceiling. At 80 MiB the Sidecar checkpoints and runs retention GC. If hard-expired rows cannot reduce it below 90 MiB, the next source-event transaction is atomically refused, source ingestion enters `storage_limit`, immediately closes the official SSE, retains the last committed cursor, and stays non-live. It neither buffers nor discards later frames. During bounded backoff it reruns checkpoint/GC and reconnects only after measured database-plus-WAL size is below 80 MiB; resume then starts from the last committed cursor and follows normal `ok|gap` handling. A restart follows the same recovery gate before opening SSE. Tests cover an event crossing the threshold, crash while attention is set, successful GC recovery, and persistent exhaustion. A disabled or newly created consumer does not retroactively gain historical deliveries.
+Database plus WAL has a 100 MiB operational ceiling. At 80 MiB the Sidecar checkpoints and runs retention GC. If hard-expired rows cannot reduce it below 80 MiB, the next source-event transaction is atomically refused, source ingestion enters `storage_limit`, immediately closes the official SSE, retains the last committed cursor, and stays non-live. It neither buffers nor discards later frames. During bounded backoff it reruns checkpoint/GC and reconnects only after measured database-plus-WAL size is below 80 MiB; resume then starts from the last committed cursor and follows normal `ok|gap` handling. A restart follows the same recovery gate before opening SSE. Tests cover an event crossing the threshold and persistent exhaustion. A disabled or newly created consumer does not retroactively gain historical deliveries.
 
 ## 9. Credentials and trust boundaries
 
@@ -295,9 +293,9 @@ The version 2 Keychain item uses a new service name and remains scoped by normal
 Migration procedure:
 
 1. Preserve the legacy patched-Hub Keychain item.
-2. Pair/register a Sidecar consumer and store the v2 item.
-3. Probe authenticated catalog, connected frame and capability version.
-4. Switch `transportMode` atomically only after the probe succeeds.
+2. Pair/register a temporary Sidecar consumer.
+3. Probe its authenticated status, catalog, connected frame and capability version.
+4. Save the v2 Keychain item, whose presence is the active Sidecar transport binding, only after every probe succeeds.
 5. On failure, retain the old active binding and expose an actionable status.
 
 The app never connects to patched and Sidecar streams simultaneously for user delivery. Their IDs are not equivalent, so dual delivery cannot be made safe by event-ID deduplication.
@@ -316,8 +314,8 @@ Existing `/health`, `/v1/pair`, `/v1/status`, `/v1/config`, `/v1/test`, activati
 
 Compatibility is versioned rather than interpreting old device credentials as source credentials:
 
-- state schema v1 remains readable for rollback;
-- the first v2 start atomically imports management/bootstrap hashes, mobile configuration, policy revision, activation status and handled ledger into SQLite, while moving the existing ntfy topic and old patched-Hub device credential into a separate `legacy-secrets.json` rollback file with mode `0600`;
+- state schema v1 remains the private control-plane store, so the existing management hash, mobile topic, policy and revision require no secret-bearing migration;
+- activating official mode atomically marks `sourceMode=officialHapi`, removes the obsolete patched-Hub device credential from live control state, and leaves the pre-cutover JSON backup untouched for rollback;
 - the old `{deviceId,token}` is never used to authenticate official HAPI and is never returned by an API;
 - `/v1/activate` and `/v1/repair` remain available only while `sourceMode=patchedHub`; in `sourceMode=officialHapi` they return `409 {error:"client_upgrade_required",requiredAPI:2}`;
 - the updated Mac/mobile controller uses `PUT /v2/config` for policy/content settings and `POST /v2/receivers/ntfy` to activate the internal ntfy consumer. Those requests never contain a HAPI credential;
@@ -326,7 +324,7 @@ Compatibility is versioned rather than interpreting old device credentials as so
 
 V2 ntfy activation maps the existing receiver installation ID, topic secret, policy and content mode to one internal consumer. It returns a stable receiver ID and config revision, not a HAPI device token. The Mac UI preserves its existing paired state after the one-time v1-to-v2 migration.
 
-`/v1/status` exposes only non-secret health and capability data, including:
+`/v2/status` exposes Sidecar source/cutover health to the management credential; `/v1/status` retains its mobile-compatible response. Both expose only non-secret health and capability data, including:
 
 - Sidecar contract version;
 - source state and last observation time;
@@ -437,7 +435,7 @@ Release acceptance records measured idle/load values and verifies journal bounds
 
 ### 15.5 Migration and clients
 
-- Relay v1 JSON to Sidecar schema migration preserves mobile policy/revision without leaking secrets;
+- Relay v1 control state remains readable and official-mode activation preserves mobile policy/revision without copying secrets into SQLite;
 - Mac legacy Keychain binding remains usable; v2 probe and atomic switch work; rollback restores it;
 - origin-scoped settings, selection, ledger and mobile configuration remain visible;
 - real unmodified HAPI v0.30.7 triggers each notification kind;
