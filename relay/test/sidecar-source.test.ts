@@ -29,23 +29,23 @@ describe('SidecarSourceEngine', () => {
     expect(store.sourceCursor()).toBe('event:harmless'); expect(catalogCalls).toBe(1); expect(detailCalls).toBe(1)
     expect(store.catalog().sessions[0]?.updatedAt).toBe(123); await engine.stop()
   })
-  test('batches a burst of harmless cursor updates and flushes the tail on stop', async () => {
+  test('bounds a harmless cursor batch and flushes its tail on stop', async () => {
     const client = {
       catalog: async () => [{ id: 's1', title: 'One', active: true, updatedAt: 1 }],
       session: async () => ({ id: 's1', title: 'One', active: true, thinking: false, updatedAt: 1 }),
       messages: async () => ({ messages: [], page: { epoch: 1, reset: false, nextAfterSeq: null, nextAfterAt: null, snapshotHeadSeq: null, snapshotHeadAt: null, hasMore: false } }),
       events: async function* (_cursor: unknown, signal: AbortSignal) {
         yield { type: 'connected', connected: { resume: 'gap' } }
-        for (let index = 1; index <= 10; index++) yield { type: 'event', frame: { id: `event:${index}`, event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: index, thinking: false } } } }
+        for (let index = 1; index <= 100; index++) yield { type: 'event', frame: { id: `event:${index}`, event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: index, thinking: false } } } }
         await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
       }
     }
     const { store, engine } = await setup(client)
     const original = store.advanceCursor.bind(store); let commits = 0
     store.advanceCursor = ((...args: Parameters<SidecarStore['advanceCursor']>) => { commits++; return original(...args) }) as SidecarStore['advanceCursor']
-    engine.start(); for (let i = 0; i < 30 && store.sourceCursor() !== 'event:1'; i++) await Bun.sleep(5)
-    await Bun.sleep(20); expect(commits).toBe(1); expect(store.sourceCursor()).toBe('event:1')
-    await engine.stop(); expect(commits).toBe(2); expect(store.sourceCursor()).toBe('event:10'); expect(store.catalog().sessions[0]?.updatedAt).toBe(10)
+    engine.start(); for (let i = 0; i < 30 && store.sourceCursor() !== 'event:65'; i++) await Bun.sleep(5)
+    expect(commits).toBe(2); expect(store.sourceCursor()).toBe('event:65')
+    await engine.stop(); expect(commits).toBe(3); expect(store.sourceCursor()).toBe('event:100'); expect(store.catalog().sessions[0]?.updatedAt).toBe(100)
   })
   test('discards a failed pre-gap cursor batch before reconciliation', async () => {
     let connections = 0
