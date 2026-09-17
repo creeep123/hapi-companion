@@ -1,7 +1,7 @@
 import type { ConsumerBroker } from './consumer-broker'
 import { EventInterpreter } from './interpreter'
 import { OfficialHapiClient, OfficialHapiError, type OfficialStreamItem } from './official-hapi'
-import { SidecarStorageLimitError, type SidecarStore } from './sidecar-store'
+import { SidecarStorageLimitError, type CatalogItem, type SidecarStore } from './sidecar-store'
 import type { OfficialSession, OfficialSessionSummary } from './types'
 import type { ConsumerKind } from './sidecar-store'
 
@@ -15,7 +15,9 @@ export class SidecarSourceEngine {
   private mutationTail: Promise<void> = Promise.resolve()
   private pendingCursor?: string
   private pendingCursorCount = 0
-  private pendingCatalogTouches = new Map<string, number>()
+  private pendingBatchStart?: ReturnType<EventInterpreter['exportState']>
+  private pendingCatalogUpserts = new Map<string, CatalogItem>()
+  private pendingCatalogRemovals = new Set<string>()
   private lastCursorFlushAt = 0
   constructor(
     private readonly store: SidecarStore,
@@ -62,7 +64,7 @@ export class SidecarSourceEngine {
     const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
     const pump = this.pump(iterator, queue, activeSignal)
     try {
-      if (first.value.connected.resume === 'gap') this.discardPendingCursor()
+      if (first.value.connected.resume === 'gap') this.rollbackPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
       this.store.sourceHealth('live')
       for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
@@ -127,47 +129,94 @@ export class SidecarSourceEngine {
   private async apply(item: Extract<OfficialStreamItem, { type: 'event' }>, signal: AbortSignal) {
     const { id, event } = item.frame
     if (!id) throw new OfficialHapiError('contract_invalid', true)
-    if (event.type === 'session-updated' && event.sessionId && !this.interpreter.sessionPatchNeedsRefresh(event.sessionId, event.data)) {
-      const updatedAt = event.data && typeof event.data === 'object' && Number.isSafeInteger((event.data as any).updatedAt) ? Number((event.data as any).updatedAt) : undefined
-      this.pendingCursor = id; this.pendingCursorCount++
-      if (updatedAt !== undefined) this.pendingCatalogTouches.set(event.sessionId, updatedAt)
-      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 5_000) this.flushPendingCursor()
-      return
-    }
-    this.flushPendingCursor()
-    const before = this.interpreter.exportState()
-    let candidates, catalog: ReturnType<typeof catalogItem>[] | undefined
-    if ((event.type === 'session-added' || event.type === 'session-updated') && event.sessionId) {
-      let session = await this.client.session(event.sessionId, signal)
-      candidates = this.interpreter.observeSession(session, id)
-      if (candidates.some(candidate => candidate.event.kind === 'input-request' || candidate.event.kind === 'permission-request')) {
-        await this.sleep(500, signal)
-        const pending = new Set(requestIds(session = await this.client.session(event.sessionId, signal)))
-        candidates = candidates.filter(candidate => !candidate.event.requestId || pending.has(candidate.event.requestId))
-        this.interpreter.observeSession(session, id)
+    const batchStart = this.pendingBatchStart ?? this.interpreter.exportState()
+    try {
+      let candidates = []
+      let changedSession: OfficialSession | undefined
+      const removedSessionIds: string[] = []
+
+      if (event.type === 'session-updated' && event.sessionId) {
+        const result = this.interpreter.observeSessionUpdate(event.sessionId, event.data, id)
+        if (result.status === 'applied') {
+          candidates = result.candidates
+          changedSession = result.session
+        } else {
+          changedSession = await this.client.session(event.sessionId, signal)
+          candidates = this.interpreter.observeSession(changedSession, id)
+        }
+      } else if (event.type === 'session-added' && event.sessionId) {
+        const result = this.interpreter.observeSessionSnapshot(event.sessionId, event.data, id)
+        if (result.status === 'applied') {
+          candidates = result.candidates
+          changedSession = result.session
+        } else {
+          changedSession = await this.client.session(event.sessionId, signal)
+          candidates = this.interpreter.observeSession(changedSession, id)
+        }
+      } else {
+        candidates = this.interpreter.observe(event, id)
+        if (event.type === 'session-removed' && event.sessionId) removedSessionIds.push(event.sessionId)
       }
-      catalog = await this.refreshCatalog(signal)
-    } else {
-      candidates = this.interpreter.observe(event, id)
+
+      if (changedSession && candidates.some(candidate => candidate.event.kind === 'input-request' || candidate.event.kind === 'permission-request')) {
+        await this.sleep(500, signal)
+        const confirmed = await this.client.session(changedSession.id, signal)
+        const pending = new Set(requestIds(confirmed))
+        const newlyConfirmed = this.interpreter.observeSession(confirmed, id)
+        candidates = [...candidates, ...newlyConfirmed].filter(candidate => !candidate.event.requestId || pending.has(candidate.event.requestId))
+        changedSession = confirmed
+      }
       if (event.sessionId && candidates.some(candidate => candidate.event.kind === 'ready')) {
         const latest = await this.client.messages(event.sessionId, { limit: 50 }, signal)
         candidates = this.interpreter.enrichReady(candidates, latest.messages)
       }
-      if (event.type === 'session-removed' || event.type === 'session-ended') catalog = await this.refreshCatalog(signal)
+
+      const upserts = changedSession ? [catalogItem(changedSession)] : []
+      if (candidates.length) {
+        const committedUpserts = new Map(this.pendingCatalogUpserts)
+        for (const value of upserts) committedUpserts.set(value.id, value)
+        const committedRemovals = new Set(this.pendingCatalogRemovals)
+        for (const value of upserts) committedRemovals.delete(value.id)
+        for (const sessionId of removedSessionIds) { committedRemovals.add(sessionId); committedUpserts.delete(sessionId) }
+        this.store.commitObservation(candidates, id, this.interpreter.exportState(), this.deliveryKinds, { upsert: [...committedUpserts.values()], remove: [...committedRemovals] })
+        this.clearPendingCursor()
+        this.broker.signal()
+        this.onEvent()
+        return
+      }
+
+      this.pendingCursor = id
+      this.pendingCursorCount++
+      this.pendingBatchStart ??= batchStart
+      for (const value of upserts) {
+        this.pendingCatalogUpserts.set(value.id, value)
+        this.pendingCatalogRemovals.delete(value.id)
+      }
+      for (const sessionId of removedSessionIds) {
+        this.pendingCatalogRemovals.add(sessionId)
+        this.pendingCatalogUpserts.delete(sessionId)
+      }
+      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 5_000) this.flushPendingCursor()
+    } catch (error) {
+      this.interpreter.restoreState(this.pendingBatchStart ?? batchStart)
+      this.clearPendingCursor()
+      throw error
     }
-    try { this.store.commitObservation(candidates, id, this.interpreter.exportState(), this.deliveryKinds, catalog) }
-    catch (error) { this.interpreter.restoreState(before); throw error }
-    this.broker.signal(); if (candidates.length) this.onEvent()
   }
   private flushPendingCursor() {
     if (!this.pendingCursor) return
     const cursor = this.pendingCursor
-    const touches = [...this.pendingCatalogTouches].map(([sessionId, updatedAt]) => ({ sessionId, updatedAt }))
-    this.store.advanceCursor(cursor, touches)
-    this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear(); this.lastCursorFlushAt = Date.now()
+    try {
+      this.store.advanceCursor(cursor, this.interpreter.exportState(), { upsert: [...this.pendingCatalogUpserts.values()], remove: [...this.pendingCatalogRemovals] })
+      this.clearPendingCursor()
+      this.lastCursorFlushAt = Date.now()
+    } catch (error) {
+      this.rollbackPendingCursor()
+      throw error
+    }
   }
-  private discardPendingCursor() { this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear() }
-  private async refreshCatalog(signal: AbortSignal) { return (await this.client.catalog(signal)).map(catalogItem) }
+  private clearPendingCursor() { this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingBatchStart = undefined; this.pendingCatalogUpserts.clear(); this.pendingCatalogRemovals.clear() }
+  private rollbackPendingCursor() { if (this.pendingBatchStart) this.interpreter.restoreState(this.pendingBatchStart); this.clearPendingCursor() }
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.mutationTail
     let release!: () => void

@@ -54,6 +54,14 @@ describe('OfficialHapiClient', () => {
     expect(await client.session('s1')).toMatchObject({ id: 's1', active: true })
   })
 
+  test('rejects malformed official session detail fields', async () => {
+    const fetcher = async (input: RequestInfo | URL): Promise<Response> => new URL(String(input)).pathname === '/api/auth'
+      ? Response.json({ token: `jwt-${'x'.repeat(20)}` })
+      : Response.json({ session: { id: 's1', active: true, metadata: { name: 42 } } })
+    const client = new OfficialHapiClient('https://hapi.example', 'secret', fetcher as any)
+    await expect(client.session('s1')).rejects.toMatchObject({ code: 'contract_invalid', permanent: true })
+  })
+
   test('preserves HTTP failure classification when a messages request fails', async () => {
     const fetcher = async (input: RequestInfo | URL): Promise<Response> => new URL(String(input)).pathname === '/api/auth'
       ? Response.json({ token: `jwt-${'x'.repeat(20)}` })

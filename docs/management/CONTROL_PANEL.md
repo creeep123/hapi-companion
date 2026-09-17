@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-16
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness, forced-gap, reconnect and real-ready parity gates, but failed the production resource gate under active HAPI traffic. The private shadow is stopped and disabled, its database and binary pointer are rolled back to alpha.5, and V0.6 is paused rather than adding another optimization layer.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness but failed the active-traffic resource gate. Source review then confirmed that official HAPI v0.30.7 already sends versioned structured session patches and its own Web client applies them without REST refetch. V0.6 development has resumed with that simpler reducer design; the private shadow remains stopped until a new candidate passes local gates.
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepted the narrow reliability tradeoff: after an official SSE replay gap, any ready/task event outside available replay may be missed even if its message remains in history. Current pending input/permission requests are recoverable from session state. Alpha.8 proved this bounded recovery, but official HAPI emits frequent full metadata patches during active work. Safely treating those patches as meaningful caused repeated session/catalog reconciliation and measured about 3.7% of one CPU core, 0.21 MB/s writes and roughly 92 filesystem syncs per second. Distinguishing every metadata mutation without missing product-significant changes would add more inference and state complexity, so the agreed stop rule applies. Keep the evidence and implementation for a future upstream event interface; continue using the proven patched transport now. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+The product owner accepts the narrow reliability tradeoff: after a Hub restart or official SSE replay gap, an occasional ready/task event outside replay may be missed. Do not add transcript polling or another durability layer for that exceptional case. Alpha.8's resource failure came from treating official structured patches as invalidations, causing repeated detail/catalog reads and full-state writes. The replacement follows official HAPI Web semantics: merge versioned `metadata` and `agentState` in memory, update one catalog row, and durably batch non-notifying cursor progress. Production remains on the proven patched transport until the replacement passes correctness, resource and real-device shadow gates. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -131,7 +131,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
-| V0.6 official-HAPI Sidecar | Paused after alpha.8 gate | correctness passes, resource gate fails under active metadata traffic; shadow is stopped/disabled and no alpha.9 is planned |
+| V0.6 official-HAPI Sidecar | Reviewed local alpha.9 candidate | structured-patch reducer, 178 Relay tests, 75 Mac tests, official 116-test/real-process gate and Linux package smoke pass; final reviews pass and shadow stays stopped pending the VM resource gate |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -176,7 +176,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release; V0.6 evidence retained and safely paused |
-| upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
+| upstream Hub proposal | V0.6 structured-patch reducer | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting
 
