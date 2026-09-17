@@ -1,6 +1,6 @@
 # V0.6 official-HAPI Sidecar
 
-Status: paused after alpha.8 resource gate; private shadow stopped and rolled back; patched production remains authoritative
+Status: implementation resumed with official structured-patch reducer; private shadow remains stopped; patched production remains authoritative
 
 ## Outcome
 
@@ -27,6 +27,12 @@ The product owner accepts that after an official SSE replay gap, a ready/task ev
 
 ## Execution checklist
 
+- [x] Replace per-patch detail/catalog invalidation with versioned structured-patch reduction.
+- [x] Commit only affected catalog rows and bounded cursor checkpoints for non-notifying traffic.
+- [x] Preserve targeted request debounce/detail confirmation and malformed-patch fallback.
+- [x] Pass unit, compatibility and package gates before creating a new shadow candidate.
+- [ ] Pass the representative VM resource gate before any client cutover.
+
 - [x] Inspect official HAPI v0.30.7 REST/SSE behavior.
 - [x] Inspect existing Mac and Mobile Relay coupling.
 - [x] Draft complete technical specification and ADR.
@@ -40,6 +46,11 @@ The product owner accepts that after an official SSE replay gap, a ready/task ev
 - [x] Prepare a clean, reviewable candidate; do not deploy without explicit approval.
 
 ## Current evidence
+
+- The resumed implementation follows the clean official HAPI v0.30.7 structured-patch contract. A 1,000-frame metadata stress test makes one catalog call, one startup detail call, at most 17 durable checkpoints and at most 40 full aggregate exports; it persists metadata version 1,000 and does not read messages.
+- Local alpha.9 gates pass: 178 Relay tests, TypeScript, 75 Mac tests, Linux x64 compile and self-contained bundle smoke; the official HAPI gate passes 116 upstream tests plus the real auth/catalog/SSE handshake. Local archive SHA-256 is `7f4581cf9e2931cfaa52c4fa41b7a459e5c10b32e5401b4dd0c12c6f6ebba90f`; binary SHA-256 is `64e60d9cec5bb740aaa93792afb72358d9905a2a1ec35180748ba2344b39eb33`. These hashes identify the reviewed local package and are not deployment evidence.
+- Final independent specification and correctness reviews are PASS with no unresolved P0/P1/P2 finding. Review fixes cover whole-batch rollback, request-confirmation races, full-session replacement, version-zero wrappers, malformed structured values and malformed full Session/REST detail fallback.
+- Reviewable integration is [PR #40](https://github.com/creeep123/hapi-companion/pull/40), built from immutable implementation commit `f6386c23fcbb8366533a79e65a023cf29482bd7c`. The PR is mergeable against canonical `main`; production and the stopped private shadow remain unchanged pending explicit authorization.
 
 - Clean official HAPI checkout: `0239edf38e2da653d662f31039e24ccea04c7837`; 116 upstream route/replay/namespace tests and the real auth/namespace/catalog/SSE process gate pass.
 - Relay: alpha.8 has 165 tests plus TypeScript passing, including zero-message gap recovery, request confirmation races, SSE-ID deduplication, atomic rollback, serialized cutover and bounded cursor batching.

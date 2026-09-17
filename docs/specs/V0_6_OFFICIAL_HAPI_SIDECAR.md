@@ -79,7 +79,7 @@ This is the only module that understands official HAPI wire formats. It owns:
 
 - access-token login and in-memory JWT renewal;
 - the single upstream SSE connection;
-- catalog and session-detail calls, plus bounded message preview enrichment for a live ready event;
+- catalog and session-detail calls for cold start and gap recovery, plus bounded message preview enrichment for a live ready event;
 - SSE parsing, heartbeat timeout, reconnect backoff and `resume=ok|gap` handling;
 - one isolated state machine per configured namespace.
 
@@ -102,6 +102,8 @@ The interpreter consumes typed observations and owns session aggregate state:
 - pending request IDs and tools;
 - legacy optional message-watermark fields, cleared whenever a gap baseline is committed;
 - ready cooldown and task/completion suppression window.
+
+For a structured `session-updated` event it applies the patch directly. Scalar fields replace the corresponding aggregate field; `metadata` and `agentState` are atomic `{version,value}` wrappers and apply only when their version is newer than the aggregate watermark. A full Session payload replaces the aggregate. Unknown or malformed patch shapes fail closed to a targeted session-detail fetch; known structured patches never trigger a full catalog refresh.
 
 It emits a version 1 `CompanionEvent` candidate only when a supported semantic transition is proven. It does not perform network delivery.
 
@@ -181,7 +183,9 @@ Normalize completion status and bounded summary. Malformed structured content is
 
 ### 6.4 Input and permission request
 
-After a session-added or a semantically relevant session-updated observation, fetch full session detail and compare the new request-ID set with the stored set. Session patches that contain only catalog timestamps, unchanged turn status, or model/settings metadata cannot create or resolve a Companion notification; the adapter advances their official SSE cursor and catalog timestamps in bounded batches without fetching session detail or rewriting the interpreter checkpoint. The first patch, the first later harmless patch observed after five seconds, every 64th pending patch, the next semantic event, connection close, and orderly stop flush the latest cursor. The 64-event limit preserves substantial margin below HAPI's global 256-event replay ceiling; it does not claim that the upstream ring itself is durable. An idle non-semantic tail may remain in memory until another trigger, and a crash before a batch commit can only replay classified non-semantic patches. Unknown patch fields and any changed turn-status field fail closed to the full refresh path. When a new request first appears, wait 500 ms and fetch detail again; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately while preserving input/permission and turn-transition detection.
+`session-added` carries a full Session snapshot. A structured `session-updated` can carry `agentState: {version,value}`; compare the request IDs in that value with the aggregate's prior set without fetching session detail. When a new request first appears, wait 500 ms and perform one targeted detail confirmation; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately. A malformed or unknown session patch also performs one targeted detail fetch as a compatibility fallback. Neither path refreshes the full catalog.
+
+Known structured patches update the affected catalog row from the same in-memory aggregate. Non-notifying patches advance the official cursor, aggregate checkpoint and changed row in one bounded transaction. Flush after at most 64 frames, on the first subsequent frame after five seconds, before a notification transaction, on connection close and on orderly stop. An idle tail can remain in memory until one of those triggers. Notification-producing transitions commit the candidate, current aggregate checkpoint, affected catalog row and cursor atomically. A crash before a non-notifying batch commit may replay that tail; version watermarks and semantic source keys make it idempotent.
 
 After removing an optional `functions.` prefix, these tools are input requests: `request_user_input`, `AskUserQuestion`, `ask_user_question`, and `CursorAskQuestion`. Other tools are permission requests. The full request object is authoritative; catalog request-kind summaries are insufficient.
 
@@ -405,6 +409,11 @@ Release acceptance records measured idle/load values and verifies journal bounds
 - deterministic identity, bounded sanitized content and exact encoded URL;
 - a 230-session gap with arbitrarily deep message history makes zero message-history calls and reaches live state;
 - gap snapshot/buffered-live races preserve order and deduplicate by official SSE frame ID;
+- official structured metadata and agent-state patches update one aggregate without REST/catalog refetch;
+- stale or duplicate versioned patches do not move metadata/agent-state backward or duplicate a request notification;
+- malformed/unknown patches use one targeted detail fallback and never refresh the full catalog;
+
+The agreed test seams are: official SSE frame to `EventInterpreter` result; `SidecarSourceEngine` against the official-client interface; and committed Companion event/catalog/cursor behavior through `SidecarStore`. Tests do not couple to private helper calls.
 
 ### 15.3 Durability and consumers
 
@@ -450,3 +459,4 @@ Every candidate official HAPI version must run the composite compatibility suite
 - No HAPI access credential appears outside the VM trust boundary or in observable output.
 - Technical, security and client migration reviews have no unresolved blocking findings.
 - Deployment and patch retirement remain gated by explicit authorization and real-device acceptance.
+- Under representative active-session metadata traffic, the Sidecar meets the average CPU budget, performs no per-patch REST/catalog refresh, and reduces steady-state durable writes to bounded cursor checkpoints plus real notification commits.
