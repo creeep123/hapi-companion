@@ -111,7 +111,10 @@ export class SidecarSourceEngine {
       if (first.value.connected.resume === 'gap') this.rollbackPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
       this.sourceHealth('live')
-      for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
+      for await (const item of queue.items(activeSignal)) {
+        throwIfAborted(activeSignal)
+        await this.exclusive(() => this.apply(item, activeSignal))
+      }
       await pump
     } catch (error) { queue?.throwIfFailed(); throw error }
     finally {
@@ -169,6 +172,7 @@ export class SidecarSourceEngine {
         }
       }
       this.interpreter.clearMessageWatermarks()
+      throwIfAborted(signal)
       if (!hadState) this.store.commitBaseline(catalog.map(catalogItem), this.interpreter.exportState())
       else this.store.commitReconciliation(candidates, catalog.map(catalogItem), this.interpreter.exportState(), this.deliveryKinds)
       this.baselineReady = true
@@ -177,6 +181,7 @@ export class SidecarSourceEngine {
   }
 
   private async apply(item: Extract<OfficialStreamItem, { type: 'event' }>, signal: AbortSignal) {
+    throwIfAborted(signal)
     const { id, event } = item.frame
     if (!id) throw new OfficialHapiError('contract_invalid', true)
     const batchStart = this.pendingBatchStart ?? this.interpreter.exportState()
@@ -222,6 +227,7 @@ export class SidecarSourceEngine {
       }
 
       const upserts = changedSession ? [catalogItem(changedSession)] : []
+      throwIfAborted(signal)
       if (candidates.length) {
         const committedUpserts = new Map(this.pendingCatalogUpserts)
         for (const value of upserts) committedUpserts.set(value.id, value)
@@ -310,4 +316,5 @@ class BoundedEventQueue {
   }
 }
 class SidecarReconcileOverflowError extends Error { constructor() { super('source_reconcile_overflow') } }
+function throwIfAborted(signal: AbortSignal) { if (signal.aborted) throw new DOMException('aborted', 'AbortError') }
 function abortableSleep(ms: number, signal: AbortSignal): Promise<void> { return new Promise((resolve, reject) => { const timer = setTimeout(done, ms); function done() { signal.removeEventListener('abort', abort); resolve() } function abort() { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')) } signal.addEventListener('abort', abort, { once: true }) }) }

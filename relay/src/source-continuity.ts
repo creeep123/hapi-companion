@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, writeSync, constants } from 'node:fs'
+import { closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, writeSync, constants } from 'node:fs'
 import { dirname, isAbsolute } from 'node:path'
 import type { ContinuityEvidence } from './phase-b-compare'
 
@@ -50,7 +50,9 @@ export class SourceContinuityJournal {
   private readonly runId = randomUUID()
   private entries: Entry[]
   private closed = false
-  constructor(readonly path: string, private readonly now = () => Date.now()) {
+  private failed = false
+  constructor(readonly path: string, private readonly now = () => Date.now(), private readonly sync = fsyncSync) {
+    if (existsSync(`${path}.sealed`)) throw new Error('continuity_sealed_exists')
     privateFile(path, true)
     this.fd = openSync(path, constants.O_CREAT | constants.O_RDWR | constants.O_APPEND | constants.O_NOFOLLOW, 0o600)
     try {
@@ -62,25 +64,37 @@ export class SourceContinuityJournal {
     } catch (error) { closeSync(this.fd); throw error }
   }
   record(kind: ContinuityKind) {
-    if (this.closed || !KINDS.includes(kind)) throw new Error('continuity_closed_or_invalid')
-    const at = this.now(), prior = this.entries.at(-1)
-    if (!validTime(at) || (prior && at < prior.at)) throw new Error('continuity_clock_invalid')
-    const unsigned = { version: 1 as const, seq: this.entries.length + 1, runId: this.runId, at, kind, prev: prior?.hash ?? ZERO }
-    const entry = { ...unsigned, hash: hashOf(unsigned) }, line = `${JSON.stringify(entry)}\n`
-    if (fstatSync(this.fd).size + Buffer.byteLength(line) > MAX_BYTES) throw new Error('continuity_full')
-    writeSync(this.fd, line); fsyncSync(this.fd); this.entries.push(entry)
+    if (this.closed || this.failed || !KINDS.includes(kind)) throw new Error('continuity_closed_or_invalid')
+    try {
+      const at = this.now(), prior = this.entries.at(-1)
+      if (!validTime(at) || (prior && at < prior.at)) throw new Error('continuity_clock_invalid')
+      const unsigned = { version: 1 as const, seq: this.entries.length + 1, runId: this.runId, at, kind, prev: prior?.hash ?? ZERO }
+      const entry = { ...unsigned, hash: hashOf(unsigned) }, line = `${JSON.stringify(entry)}\n`
+      if (fstatSync(this.fd).size + Buffer.byteLength(line) > MAX_BYTES) throw new Error('continuity_full')
+      if (writeSync(this.fd, line) !== Buffer.byteLength(line)) throw new Error('continuity_short_write')
+      this.sync(this.fd); this.entries.push(entry)
+    } catch (error) { this.failed = true; throw error }
   }
-  close() { if (!this.closed) { try { this.record('stop') } finally { this.closed = true; closeSync(this.fd) } } }
+  close() {
+    if (this.closed) return
+    let stopped = false
+    try { if (!this.failed) { this.record('stop'); stopped = true } }
+    finally { this.closed = true; closeSync(this.fd) }
+    if (stopped) renameSync(this.path, `${this.path}.sealed`)
+  }
 }
 
 /** A proof covers a window only when one run stays live and heartbeats through its end. */
 export function readContinuityEvidence(path: string, from: number, through: number): ContinuityEvidence | undefined {
   try {
     if (!validTime(from) || !validTime(through) || from >= through) return undefined
+    if (!path.endsWith('.sealed')) return undefined
     privateFile(path)
     const entries = readEntries(readFileSync(path, 'utf8'))
+    const seal = entries.at(-1)
+    if (!seal || seal.kind !== 'stop') return undefined
     const live = [...entries].reverse().find(entry => entry.kind === 'live' && entry.at <= from)
-    if (!live || !entries.some(entry => entry.kind === 'run-start' && entry.runId === live.runId && entry.seq < live.seq)) return undefined
+    if (!live || live.runId !== seal.runId || !entries.some(entry => entry.kind === 'run-start' && entry.runId === live.runId && entry.seq < live.seq)) return undefined
     const beforeLive = entries.filter(entry => entry.runId === live.runId && entry.seq < live.seq)
     const connecting = [...beforeLive].reverse().find(entry => entry.kind === 'connecting')
     const verdict = [...beforeLive].reverse().find(entry => entry.kind === 'connected-ok' || entry.kind === 'connected-gap')

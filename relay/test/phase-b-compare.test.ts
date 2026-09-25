@@ -113,21 +113,22 @@ describe('offline Phase B event comparator', () => {
     journal.record('connecting'); journal.record('connected-ok'); journal.record('live')
     clock = options().from + 5000; journal.record('heartbeat')
     clock = options().through + 100; journal.record('heartbeat'); journal.close()
+    const sealedPath = `${continuityPath}.sealed`
     await chmod(f.sidecarPath, 0o600); await chmod(f.hubPath, 0o600)
     const script = resolve(import.meta.dir, '../src/phase-b-compare-cli.ts')
     const run = async () => {
-      const child = Bun.spawn([process.execPath, 'run', script, f.sidecarPath, f.hubPath, keyPath, continuityPath,
+      const child = Bun.spawn([process.execPath, 'run', script, f.sidecarPath, f.hubPath, keyPath, sealedPath,
         String(options().from), String(options().through), '5000'], { stdout: 'pipe', stderr: 'pipe' })
       const code = await child.exited, output = await new Response(child.stdout).text()
       return { code, output, error: await new Response(child.stderr).text() }
     }
     const pass = await run(); expect(pass.code).toBe(0); expect(JSON.parse(pass.output)).toMatchObject({ verdict: 'PASS', reason: 'matched' }); expect(pass.error).toBe('')
     for (const secret of [namespace, session, 'Private title', 'Private body', f.sidecarPath]) expect(pass.output).not.toContain(secret)
-    const journalBytes = await readFile(continuityPath)
-    await writeFile(continuityPath, JSON.stringify(options().continuity))
+    const journalBytes = await readFile(sealedPath)
+    await writeFile(sealedPath, JSON.stringify(options().continuity))
     const selfReport = await run(); expect(selfReport.code).toBe(2)
     expect(JSON.parse(selfReport.output)).toMatchObject({ verdict: 'INDETERMINATE', reason: 'source_gap_or_unverified' })
-    await writeFile(continuityPath, journalBytes)
+    await writeFile(sealedPath, journalBytes)
     await chmod(keyPath, 0o644)
     const rejected = await run(); expect(rejected.code).toBe(2); expect(JSON.parse(rejected.output)).toEqual({ version: 1, verdict: 'INDETERMINATE', reason: 'invalid_inputs' })
     expect(rejected.error).toBe('')

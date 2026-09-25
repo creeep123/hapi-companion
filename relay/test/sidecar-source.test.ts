@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { fsyncSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -100,6 +101,37 @@ describe('SidecarSourceEngine', () => {
     store.sourceHealth = original
     await engine.stop()
   })
+  test('a failed heartbeat sync aborts before queued events can commit or deliver', async () => {
+    let releaseDetail!: () => void, detailStarted = false, failSync = false
+    const detailGate = new Promise<void>(resolve => { releaseDetail = resolve })
+    const client = {
+      catalog: async () => [],
+      session: async () => { detailStarted = true; await detailGate; return { id: 's1', active: true, updatedAt: 2, metadata: { name: 'Synthetic' } } },
+      messages: async () => { throw new Error('unexpected messages') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        yield { type: 'event', frame: { id: 'event:added', event: { type: 'session-added', sessionId: 's1', data: { id: 's1', metadata: { name: 42 } } } } }
+        yield { type: 'event', frame: { id: 'event:removed', event: { type: 'session-removed', sessionId: 's1' } } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, interpreter, credential } = await setup(client)
+    const path = join(store.path, '..', 'continuity-queued.journal')
+    const journal = new SourceContinuityJournal(path, () => Date.now(), fd => { if (failSync) throw new Error('synthetic_fsync_failure'); fsyncSync(fd) })
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => {}, ['mac'], journal)
+    engine.start()
+    for (let i = 0; i < 30 && !detailStarted; i++) await Bun.sleep(5)
+    expect(detailStarted).toBeTrue()
+    failSync = true
+    expect(() => (engine as any).recordContinuity('heartbeat')).toThrow('continuity_write_failed')
+    releaseDetail()
+    await engine.stop()
+    expect(store.sourceCursor()).toBeUndefined()
+    expect(store.catalog().sessions).toHaveLength(0)
+    expect(store.pending(credential.consumerId)).toHaveLength(0)
+    expect(engine.isLive()).toBeFalse()
+    expect(readContinuityEvidence(`${path}.sealed`, 1, Date.now())).toBeUndefined()
+  })
   test('records authoritative connected/gap/live transitions for a post-baseline canary window', async () => {
     const client = {
       catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },
@@ -117,8 +149,8 @@ describe('SidecarSourceEngine', () => {
     for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
     expect(engine.isLive()).toBeTrue()
     clock = 2000; journal.record('heartbeat')
-    expect(readContinuityEvidence(journalPath, 1500, 1900)).toMatchObject({ sourceState: 'live', gapCount: 0, observedFrom: 1000, observedThrough: 2000 })
     clock = 3000; await engine.stop()
+    expect(readContinuityEvidence(`${journalPath}.sealed`, 1500, 1900)).toMatchObject({ sourceState: 'live', gapCount: 0, observedFrom: 1000, observedThrough: 2000 })
   })
   test('uses the full session-added payload without a detail request', async () => {
     let catalogCalls = 0, detailCalls = 0
