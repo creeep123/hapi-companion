@@ -9,7 +9,7 @@ The native app depends on a device-scoped, durable notification transport that u
 - Baseline description: HAPI `v0.30.7`
 - Patch schema level: database schema v27
 - Ported for HAPI v0.30.7: 2026-09-15
-- Cumulative patch SHA-256: `2e75aa3ce6eaf7d965639d48feff3f0dc7ff4352306b48a1c28de1a5d35f5757`
+- Cumulative patch SHA-256: `0134292bf4f6dd2743bf17ad991c1be6ce61515041757447015ee97d67586c68`
 
 Because HAPI evolves, treat this patch as a reviewed reference rather than a timeless installer.
 
@@ -139,6 +139,12 @@ Validation extended the cumulative patch on the same exact v0.30.7 baseline.
 ## Patch change and upgrade handoff
 
 These are required project rules, not an optional release checklist.
+
+### UUID v7 PWA launch fix (candidate, 2026-09-25)
+
+HAPI's PWA `launchQueue` consumer previously rejected UUID v7 session IDs because its UUID-version check accepted only versions 1–5. A regression using `019ff3fa-2872-7443-a3cb-84a2b2b906ea` failed in both URL validation and router navigation before the fix and passed after widening the version check to 1–8. Same-origin, exact-path, no-query/no-fragment and UUID-variant restrictions are unchanged.
+
+The cumulative patch applies cleanly to the same official v0.30.7 baseline `0239edf38e2da653d662f31039e24ccea04c7837`; the package manifests and `bun.lock` are unchanged. In an isolated checkout, targeted PWA tests, the full HAPI root test command with Node experimental Web Storage disabled, full typecheck and full build passed. The old patch SHA-256 is `2e75aa3ce6eaf7d965639d48feff3f0dc7ff4352306b48a1c28de1a5d35f5757`; the candidate SHA-256 is `0134292bf4f6dd2743bf17ad991c1be6ce61515041757447015ee97d67586c68`. There is no API contract or database migration change. Rollback uses the previous patched Hub plus embedded Web assets as a matched package; schema remains v27, so this fix alone requires no DB downgrade. Production still needs updater pin/gate acceptance and an authorized Web deployment followed by a real PWA click check.
 
 ### Ownership and current pin
 

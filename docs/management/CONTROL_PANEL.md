@@ -1,6 +1,6 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-25
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
 **Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness, forced-gap, reconnect and real-ready parity gates, but failed the production resource gate under active HAPI traffic. The private shadow is stopped and disabled, its database and binary pointer are rolled back to alpha.5, and V0.6 is paused rather than adding another optimization layer.
@@ -16,6 +16,8 @@ After a restart, the installed login-item app and an Xcode Debug copy were both 
 ## Active release — V0.5 sounds and smooth PWA navigation
 
 The user selected two short pixel coin cues for the built-in sound list. Notification clicks will hand the exact URL to Edge once; the HAPI PWA will focus its existing window and switch sessions through its own router, avoiding the current settings flash and full document reload on supported Edge versions. The fallback still opens the exact session on older browsers. No Hub API, schema, SSE/ACK or Relay contract changes. Scope and gates: [V0.5 specification](../specs/V0_5_SOUNDS_AND_NAVIGATION.md); architecture: [ADR 0006](../adr/0006-pwa-launch-routing.md).
+
+**2026-09-25 repair candidate:** real UUID v7 session links opened the PWA without changing its session because the embedded Web launch handler accepted only UUID versions 1–5. A regression now covers a real v7 ID, and the candidate accepts versions 1–8 while retaining the existing URL checks. Local HAPI tests, typecheck and build pass. The updater must accept the new patch pin and matched Hub/Web package before a production click can be verified; the current production path remains unchanged.
 
 ## Deployment candidate — V0.4 Android exact-session notifications
 
