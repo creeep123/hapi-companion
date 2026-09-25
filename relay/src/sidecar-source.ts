@@ -4,6 +4,7 @@ import { OfficialHapiClient, OfficialHapiError, type OfficialStreamItem } from '
 import { SidecarStorageLimitError, type CatalogItem, type SidecarStore } from './sidecar-store'
 import type { OfficialSession, OfficialSessionSummary } from './types'
 import type { ConsumerKind } from './sidecar-store'
+import type { SourceContinuityJournal } from './source-continuity'
 
 type SourceClient = Pick<OfficialHapiClient, 'catalog' | 'session' | 'messages' | 'events'>
 
@@ -19,6 +20,7 @@ export class SidecarSourceEngine {
   private pendingCatalogUpserts = new Map<string, CatalogItem>()
   private pendingCatalogRemovals = new Set<string>()
   private lastCursorFlushAt = 0
+  private continuityTimer?: ReturnType<typeof setInterval>
   constructor(
     private readonly store: SidecarStore,
     private readonly interpreter: EventInterpreter,
@@ -26,28 +28,50 @@ export class SidecarSourceEngine {
     private readonly client: SourceClient,
     private readonly sleep = abortableSleep,
     private readonly onEvent: () => void = () => {},
-    targetKinds: ConsumerKind[] = ['mac', 'ntfy']
+    targetKinds: ConsumerKind[] = ['mac', 'ntfy'],
+    private readonly continuity?: SourceContinuityJournal
   ) { this.deliveryKinds = [...targetKinds] }
   setDeliveryActive(active: boolean) { this.deliveryKinds = active ? ['mac', 'ntfy'] : [] }
   async activateDelivery(commit: () => Promise<void>) {
     await this.exclusive(async () => { if (!this.isLive()) throw new Error('official_source_not_live'); await commit(); this.setDeliveryActive(true) })
   }
   isLive() { return this.store.sourceStatus().state === 'live' }
-  start() { if (!this.task) { this.controller = new AbortController(); const task = this.run(this.controller.signal); this.task = task; task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined) } }
-  async stop() { this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined }
+  start() { if (!this.task) {
+    this.controller = new AbortController()
+    if (this.continuity) {
+      this.continuityTimer = setInterval(() => {
+        if (!this.isLive()) return
+        try { this.continuity?.record('heartbeat') }
+        catch { this.controller?.abort(); this.store.sourceHealth('attention', 'continuity_write_failed') }
+      }, 5_000)
+      this.continuityTimer.unref?.()
+    }
+    const task = this.run(this.controller.signal); this.task = task
+    task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined)
+  } }
+  async stop() {
+    if (this.continuityTimer) clearInterval(this.continuityTimer)
+    this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined
+    this.continuity?.close()
+  }
+
+  private sourceHealth(state: 'connecting' | 'attention' | 'live', code?: string) {
+    this.continuity?.record(state)
+    this.store.sourceHealth(state, code)
+  }
 
   private async run(signal: AbortSignal) {
     let attempt = 0
     while (!signal.aborted) {
-      if (!this.store.ensureCapacity()) { this.store.sourceHealth('attention', 'storage_limit'); await this.sleep(30_000, signal); continue }
-      this.store.sourceHealth('connecting')
+      if (!this.store.ensureCapacity()) { this.sourceHealth('attention', 'storage_limit'); await this.sleep(30_000, signal); continue }
+      this.sourceHealth('connecting')
       try { await this.connection(signal); attempt = 0 }
       catch (error) {
         if (signal.aborted) return
         const permanent = error instanceof OfficialHapiError && error.permanent
         const code = error instanceof SidecarStorageLimitError ? 'storage_limit' : error instanceof SidecarReconcileOverflowError ? 'source_reconcile_overflow' : error instanceof OfficialHapiError ? `source_${error.code}` : 'source_unavailable'
         const requiresAttention = permanent || error instanceof SidecarStorageLimitError || error instanceof SidecarReconcileOverflowError
-        this.store.sourceHealth(requiresAttention ? 'attention' : 'connecting', code)
+        this.sourceHealth(requiresAttention ? 'attention' : 'connecting', code)
         if (permanent) return
         await this.sleep(Math.min(30_000, 1000 * 2 ** Math.min(attempt++, 5)) + Math.floor(Math.random() * 250), signal)
       }
@@ -61,18 +85,22 @@ export class SidecarSourceEngine {
     const iterator = this.client.events(this.store.sourceCursor(), activeSignal)[Symbol.asyncIterator]()
     const first = await iterator.next()
     if (first.done || first.value.type !== 'connected') throw new OfficialHapiError('contract_invalid', true)
+    this.continuity?.record(first.value.connected.resume === 'gap' ? 'connected-gap' : 'connected-ok')
     const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
     const pump = this.pump(iterator, queue, activeSignal)
     try {
       if (first.value.connected.resume === 'gap') this.rollbackPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
-      this.store.sourceHealth('live')
+      this.sourceHealth('live')
       for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
       await pump
     } catch (error) { queue.throwIfFailed(); throw error }
     finally {
-      local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined)
-      await this.exclusive(async () => this.flushPendingCursor())
+      try { this.continuity?.record('disconnect') }
+      finally {
+        local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined)
+        await this.exclusive(async () => this.flushPendingCursor())
+      }
     }
   }
 

@@ -6,12 +6,33 @@ import { ConsumerBroker } from '../src/consumer-broker'
 import { EventInterpreter } from '../src/interpreter'
 import { SidecarSourceEngine } from '../src/sidecar-source'
 import { SidecarStorageLimitError, SidecarStore } from '../src/sidecar-store'
+import { SourceContinuityJournal, readContinuityEvidence } from '../src/source-continuity'
 
 const stores: SidecarStore[] = []
 async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Promise<void> = async () => { throw new DOMException('aborted', 'AbortError') }, targetKinds: Array<'mac' | 'ntfy'> = ['mac', 'ntfy']) { const root = await mkdtemp(join(tmpdir(), 'source-')); const dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const store = new SidecarStore(join(dir, 'db')); stores.push(store); store.bindSource('https://hapi.example', 'ns'); const credential = store.createConsumer('mac'); const broker = new ConsumerBroker(store); const interpreter = new EventInterpreter('https://hapi.example', 'ns', () => 20_000); return { store, credential, interpreter, engine: new SidecarSourceEngine(store, interpreter, broker, client, sleep, () => {}, targetKinds) } }
 afterEach(() => { while (stores.length) stores.pop()!.close() })
 
 describe('SidecarSourceEngine', () => {
+  test('records authoritative connected/gap/live transitions for a post-baseline canary window', async () => {
+    const client = {
+      catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'gap' } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, interpreter } = await setup(client)
+    let clock = 1000
+    const journalPath = join(store.path, '..', 'continuity.journal')
+    const journal = new SourceContinuityJournal(journalPath, () => clock)
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => {}, [], journal)
+    engine.start()
+    for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue()
+    clock = 2000; journal.record('heartbeat')
+    expect(readContinuityEvidence(journalPath, 1500, 1900)).toMatchObject({ sourceState: 'live', gapCount: 0, observedFrom: 1000, observedThrough: 2000 })
+    clock = 3000; await engine.stop()
+  })
   test('uses the full session-added payload without a detail request', async () => {
     let catalogCalls = 0, detailCalls = 0
     const client = {

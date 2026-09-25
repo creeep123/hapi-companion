@@ -1,5 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { compareSnapshotFiles, type ContinuityEvidence } from './phase-b-compare'
+import { readContinuityEvidence } from './source-continuity'
 
 // Offline snapshots only. Errors are deliberately fixed codes; never print paths or raw exceptions.
 const fail = (reason: string) => { process.stdout.write(`${JSON.stringify({ version: 1, verdict: 'INDETERMINATE', reason })}\n`); process.exitCode = 2 }
@@ -15,7 +16,7 @@ try {
     if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0 ||
       (typeof process.getuid === 'function' && info.uid !== process.getuid())) throw new Error('file')
   }
-  const key = await readFile(keyPath!), continuity = JSON.parse(await readFile(continuityPath!, 'utf8')) as ContinuityEvidence
+  const key = await readFile(keyPath!), continuity = readContinuityEvidence(continuityPath!, from, through) ?? { sourceState: 'unverified', gapCount: -1, observedFrom: 0, observedThrough: 0 } satisfies ContinuityEvidence
   const result = compareSnapshotFiles(sidecar!, hub!, { from, through, toleranceMs, key, continuity })
   key.fill(0)
   process.stdout.write(`${JSON.stringify(result)}\n`)

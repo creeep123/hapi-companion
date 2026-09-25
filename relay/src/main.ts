@@ -12,6 +12,7 @@ import { createSidecarHandler } from './sidecar-server'
 import { SidecarSourceEngine } from './sidecar-source'
 import { SidecarStore } from './sidecar-store'
 import { readSourceToken } from './source-credential'
+import { SourceContinuityJournal } from './source-continuity'
 import { StateStore } from './state'
 
 const statePath = process.env.HAPI_MOBILE_RELAY_STATE ?? '/var/lib/hapi-mobile-relay/state.json'
@@ -46,7 +47,8 @@ if (command === 'pair-code') {
     const dbPath = process.env.HAPI_SIDECAR_DB ?? `${statePath}.sqlite`, sidecarStore = new SidecarStore(dbPath); sidecarStore.bindSource(hapiOrigin, namespaceHash)
     const broker = new ConsumerBroker(sidecarStore), ntfy = new NtfyConsumer(sidecarStore, store)
     const persisted = await store.load(), deliveryActive = deliveryMode === 'active' && persisted.enabled && persisted.sourceMode === 'officialHapi' && persisted.officialCutoverAt !== undefined
-    const source = new SidecarSourceEngine(sidecarStore, new EventInterpreter(publicOrigin, namespaceHash), broker, officialClient, undefined, () => { if (deliveryMode === 'active') ntfy.signal() }, deliveryActive ? ['mac', 'ntfy'] : [])
+    const continuity = process.env.HAPI_SIDECAR_CONTINUITY_PATH ? new SourceContinuityJournal(process.env.HAPI_SIDECAR_CONTINUITY_PATH) : undefined
+    const source = new SidecarSourceEngine(sidecarStore, new EventInterpreter(publicOrigin, namespaceHash), broker, officialClient, undefined, () => { if (deliveryMode === 'active') ntfy.signal() }, deliveryActive ? ['mac', 'ntfy'] : [], continuity)
     const noLegacyEngine = { start: async () => { ntfy.start() }, stop: async () => { await ntfy.stop() }, restart: async () => { ntfy.start(); ntfy.signal() } } as RelayEngine
     const sidecarRelayManager = new RelayManager(store, noLegacyEngine), sidecarManager = new SidecarManager(sidecarRelayManager, sidecarStore, publicOrigin, apiOrigin, () => deliveryMode === 'active' && source.isLive(), commit => source.activateDelivery(async () => { await commit(); ntfy.start() }))
     let maintenance: ReturnType<typeof setInterval> | undefined

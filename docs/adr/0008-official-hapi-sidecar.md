@@ -19,6 +19,8 @@ Keep the public HAPI PWA origin separate from the Sidecar API origin. Rebuild ex
 
 Use the current patch path during development and shadow verification. Cut over with a single-source barrier; never send from patched and Sidecar paths concurrently. Patch retirement requires separate production authorization and Safe Updater changes.
 
+For a bounded Phase B comparison, an optional Sidecar-owned, private, fsynced transition journal records connection verdicts and live heartbeats without content or identifiers. The offline comparator derives continuity from those source transitions and fails closed on a gap, disconnect, restart, missing end heartbeat or invalid journal. The journal is a local operational evidence aid, not a durable HAPI event source or proof against an operator who controls the file. It requires a separately reviewed Sidecar build and explicit VM authorization; it is absent from the frozen alpha.9 artifact.
+
 ## Why
 
 This removes routine source-level coupling to HAPI releases while retaining live delivery and durable behavior after observation. A dedicated source/interpreter/store boundary localizes the remaining compatibility work to official API semantics. Independent consumers prevent a phone provider outage from delaying Mac alerts, or a sleeping Mac from delaying phone alerts.
@@ -41,7 +43,7 @@ The official source credential is installed only through a VM-local operation. P
 - Reaching the storage ceiling closes the official stream at the last committed cursor until checkpoint/retention recovery succeeds; frames are never accumulated in memory.
 - A HAPI replay gap can hide a ready/task event even when its message remains in history; current pending input/permission requests are still recovered from session state.
 - HAPI event semantic changes may require an adapter update even when schemas remain syntactically compatible.
-- The Sidecar deliberately accepts the product owner's narrow loss boundary: after a Hub restart or unrecoverable replay gap, one or two transient ready/task observations can be absent. It does not add transcript polling or another journal to eliminate that exceptional case.
+- The Sidecar deliberately accepts the product owner's loss boundary: after a Hub restart or unrecoverable replay gap, any number of transient ready/task observations can be absent. It does not add transcript polling or a durable upstream journal to eliminate that exceptional case.
 - The existing Mobile Relay becomes the operational base, but its serial engine is replaced rather than extended.
 
 ## Alternatives considered

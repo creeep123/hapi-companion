@@ -341,6 +341,8 @@ After separate deployment authorization, run the Sidecar source/interpreter with
 
 The [five-kind canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md) is the operational acceptance path after the first trial. Its event generation, VM-local one-to-one comparator and second shadow window each have separate gates; no production action is implied by this specification.
 
+The local follow-on implementation adds an opt-in, service-owned continuity journal outside the Sidecar database. It fsyncs a bounded chain of source connection/gap/live/heartbeat/stop transitions without event content. The offline comparator derives one uninterrupted process-run interval from that journal; it rejects hand-written continuity JSON, gaps, restarts and missing end heartbeats. The frozen alpha.9 artifact lacks this journal, so production use requires a new reviewed package and separate authorization. This is operational continuity evidence, not tamper-proof attestation against a privileged operator and not a claim that upstream SSE is durable.
+
 ### Phase C: cutover
 
 Use a short window with no active turns:

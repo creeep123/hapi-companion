@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { compareSnapshotFiles, type CompareOptions } from '../src/phase-b-compare'
 import { SidecarStore } from '../src/sidecar-store'
+import { SourceContinuityJournal } from '../src/source-continuity'
 import { event } from './helpers'
 
 const stores: SidecarStore[] = [], hubs: Database[] = []
@@ -105,9 +106,12 @@ describe('offline Phase B event comparator', () => {
   })
   test('CLI reads offline snapshots with private files and emits only a safe summary', async () => {
     const f = await fixture(); kinds.forEach((kind, index) => f.add(kind, base + index * 1000, kind.endsWith('request') ? `request-${index}` : undefined))
-    const keyPath = join(dirname(f.hubPath), 'key'), continuityPath = join(dirname(f.hubPath), 'continuity.json')
+    const keyPath = join(dirname(f.hubPath), 'key'), continuityPath = join(dirname(f.hubPath), 'continuity.journal')
     await writeFile(keyPath, new Uint8Array(32).fill(77)); await chmod(keyPath, 0o600)
-    await writeFile(continuityPath, JSON.stringify(options().continuity)); await chmod(continuityPath, 0o600)
+    let clock = options().from - 100
+    const journal = new SourceContinuityJournal(continuityPath, () => clock)
+    journal.record('connecting'); journal.record('connected-ok'); journal.record('live')
+    clock = options().through + 100; journal.record('heartbeat'); journal.close()
     await chmod(f.sidecarPath, 0o600); await chmod(f.hubPath, 0o600)
     const script = resolve(import.meta.dir, '../src/phase-b-compare-cli.ts')
     const run = async () => {
@@ -118,6 +122,11 @@ describe('offline Phase B event comparator', () => {
     }
     const pass = await run(); expect(pass.code).toBe(0); expect(JSON.parse(pass.output)).toMatchObject({ verdict: 'PASS', reason: 'matched' }); expect(pass.error).toBe('')
     for (const secret of [namespace, session, 'Private title', 'Private body', f.sidecarPath]) expect(pass.output).not.toContain(secret)
+    const journalBytes = await readFile(continuityPath)
+    await writeFile(continuityPath, JSON.stringify(options().continuity))
+    const selfReport = await run(); expect(selfReport.code).toBe(2)
+    expect(JSON.parse(selfReport.output)).toMatchObject({ verdict: 'INDETERMINATE', reason: 'source_gap_or_unverified' })
+    await writeFile(continuityPath, journalBytes)
     await chmod(keyPath, 0o644)
     const rejected = await run(); expect(rejected.code).toBe(2); expect(JSON.parse(rejected.output)).toEqual({ version: 1, verdict: 'INDETERMINATE', reason: 'invalid_inputs' })
     expect(rejected.error).toBe('')
