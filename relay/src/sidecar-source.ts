@@ -123,7 +123,14 @@ export class SidecarSourceEngine {
         try { local.abort(); queue?.close() }
         finally {
           try { await iterator.return?.(undefined) } catch { /* abort can reject the iterator */ }
-          finally { await this.exclusive(async () => this.flushPendingCursor()) }
+          finally {
+            try { await this.exclusive(async () => this.flushPendingCursor()) }
+            finally {
+              if (this.continuityFailed) {
+                try { this.store.sourceHealth('attention', 'continuity_write_failed') } catch { /* in-memory gate remains closed */ }
+              }
+            }
+          }
         }
       }
     }
@@ -289,7 +296,7 @@ function requestIds(session: OfficialSession): string[] {
   return value && typeof value === 'object' ? Object.keys(value) : []
 }
 
-class BoundedEventQueue {
+export class BoundedEventQueue {
   private queue: Array<Extract<OfficialStreamItem, { type: 'event' }>> = []
   private bytes = 0; private waiter?: () => void; private waiterCleanup?: () => void; private error?: unknown; private ended = false
   constructor(private maxItems: number, private maxBytes: number, private onOverflow = () => {}) {}

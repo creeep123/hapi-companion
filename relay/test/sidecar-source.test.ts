@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { fsyncSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ConsumerBroker } from '../src/consumer-broker'
 import { EventInterpreter } from '../src/interpreter'
-import { SidecarSourceEngine } from '../src/sidecar-source'
+import { BoundedEventQueue, SidecarSourceEngine } from '../src/sidecar-source'
 import { SidecarStorageLimitError, SidecarStore } from '../src/sidecar-store'
 import { SourceContinuityJournal, readContinuityEvidence, type ContinuityKind } from '../src/source-continuity'
 
@@ -53,6 +53,46 @@ describe('SidecarSourceEngine', () => {
     expect((engine as any).continuityTimer).toBeUndefined()
     expect(() => engine.start()).toThrow('continuity_failed')
     release(); await engine.stop()
+  })
+  test('disconnect write failure closes the queue and flushes a real non-notifying cursor', async () => {
+    let releaseStream!: () => void, returned = 0, onEventCalls = 0, messageCalls = 0
+    const streamGate = new Promise<void>(resolve => { releaseStream = resolve })
+    const client = {
+      catalog: async () => [{ id: 's1', active: true, updatedAt: 1 }],
+      session: async () => ({ id: 's1', active: true, updatedAt: 1, metadata: { name: 'Canary' } }),
+      messages: async () => { messageCalls++; return { messages: [], page: {} } },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        try {
+          yield { type: 'connected', connected: { resume: 'gap' } }
+          yield { type: 'event', frame: { id: 'event:harmless-1', event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: 2, thinking: false } } } }
+          yield { type: 'event', frame: { id: 'event:harmless-2', event: { type: 'session-updated', sessionId: 's1', data: { updatedAt: 3, thinking: false } } } }
+          await streamGate
+        } finally { returned++ }
+      }
+    }
+    const { store, interpreter, credential } = await setup(client)
+    const journal = new FaultJournal(join(store.path, '..', 'continuity-disconnect-pending.journal'))
+    const closeSpy = spyOn(BoundedEventQueue.prototype, 'close')
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => { onEventCalls++ }, ['mac'], journal)
+    try {
+      engine.start()
+      for (let i = 0; i < 30 && (engine as any).pendingCursor !== 'event:harmless-2'; i++) await Bun.sleep(5)
+      expect((engine as any).pendingCursor).toBe('event:harmless-2')
+      expect(store.sourceCursor()).toBe('event:harmless-1')
+      journal.failOn = 'disconnect'; releaseStream()
+      for (let i = 0; i < 100 && (store.sourceStatus().attentionCode !== 'continuity_write_failed' || store.sourceCursor() !== 'event:harmless-2' || closeSpy.mock.calls.length === 0); i++) await Bun.sleep(5)
+      expect(returned).toBe(1)
+      expect(journal.failOn).toBeUndefined()
+      expect((engine as any).continuityFailed).toBeTrue()
+      expect(store.sourceStatus()).toMatchObject({ state: 'attention', attentionCode: 'continuity_write_failed' })
+      expect(closeSpy).toHaveBeenCalledTimes(1)
+      expect(returned).toBe(1)
+      expect(store.sourceCursor()).toBe('event:harmless-2')
+      expect(store.pending(credential.consumerId)).toHaveLength(0)
+      expect(onEventCalls).toBe(0)
+      expect(messageCalls).toBe(0)
+      expect(engine.isLive()).toBeFalse()
+    } finally { releaseStream(); await engine.stop(); closeSpy.mockRestore() }
   })
   test('a stop-marker write failure cannot interrupt source cleanup', async () => {
     const client = {
