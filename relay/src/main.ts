@@ -52,11 +52,11 @@ if (command === 'pair-code') {
     const noLegacyEngine = { start: async () => { ntfy.start() }, stop: async () => { await ntfy.stop() }, restart: async () => { ntfy.start(); ntfy.signal() } } as RelayEngine
     const sidecarRelayManager = new RelayManager(store, noLegacyEngine), sidecarManager = new SidecarManager(sidecarRelayManager, sidecarStore, publicOrigin, apiOrigin, () => deliveryMode === 'active' && source.isLive(), commit => source.activateDelivery(async () => { await commit(); ntfy.start() }))
     let maintenance: ReturnType<typeof setInterval> | undefined
-    handler = createSidecarHandler(broker, sidecarManager, createHandler(sidecarRelayManager)); start = async () => { sidecarStore.expire(); if (deliveryActive) ntfy.start(); source.start(); maintenance = setInterval(() => sidecarStore.expire(), 3600_000) }; stop = async () => { if (maintenance) clearInterval(maintenance); await ntfy.stop(); await source.stop(); sidecarStore.close() }
+    handler = createSidecarHandler(broker, sidecarManager, createHandler(sidecarRelayManager)); start = async () => { sidecarStore.expire(); if (deliveryActive) ntfy.start(); source.start(); maintenance = setInterval(() => sidecarStore.expire(), 3600_000) }; stop = async () => { if (maintenance) clearInterval(maintenance); try { await ntfy.stop() } finally { try { await source.stop() } finally { sidecarStore.close() } } }
   }
   const server = Bun.serve({ hostname, port, maxRequestBodySize: 65_536, fetch: handler })
   await start()
-  const shutdown = async () => { await stop(); server.stop(true); process.exit(0) }
+  const shutdown = async () => { let failed = false; try { await stop() } catch { failed = true } finally { server.stop(true) }; process.exit(failed ? 1 : 0) }
   process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown)
   process.stdout.write(`${command === 'serve-sidecar' ? 'hapi-companion-sidecar' : 'hapi-mobile-relay'} listening on ${hostname}:${port}\n`)
 } else { process.stderr.write('usage: hapi-mobile-relay [serve|serve-sidecar|pair-code|sidecar-backup <path>|sidecar-shadow-report <key-file>]\n'); process.exit(2) }

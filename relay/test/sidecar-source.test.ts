@@ -6,13 +6,100 @@ import { ConsumerBroker } from '../src/consumer-broker'
 import { EventInterpreter } from '../src/interpreter'
 import { SidecarSourceEngine } from '../src/sidecar-source'
 import { SidecarStorageLimitError, SidecarStore } from '../src/sidecar-store'
-import { SourceContinuityJournal, readContinuityEvidence } from '../src/source-continuity'
+import { SourceContinuityJournal, readContinuityEvidence, type ContinuityKind } from '../src/source-continuity'
+
+class FaultJournal extends SourceContinuityJournal {
+  failOn?: ContinuityKind
+  override record(kind: ContinuityKind) {
+    if (this.failOn === kind) { this.failOn = undefined; throw new Error('synthetic_write_failure') }
+    super.record(kind)
+  }
+}
 
 const stores: SidecarStore[] = []
 async function setup(client: any, sleep: (ms: number, signal: AbortSignal) => Promise<void> = async () => { throw new DOMException('aborted', 'AbortError') }, targetKinds: Array<'mac' | 'ntfy'> = ['mac', 'ntfy']) { const root = await mkdtemp(join(tmpdir(), 'source-')); const dir = join(root, 'state'); await mkdir(dir, { mode: 0o700 }); const store = new SidecarStore(join(dir, 'db')); stores.push(store); store.bindSource('https://hapi.example', 'ns'); const credential = store.createConsumer('mac'); const broker = new ConsumerBroker(store); const interpreter = new EventInterpreter('https://hapi.example', 'ns', () => 20_000); return { store, credential, interpreter, engine: new SidecarSourceEngine(store, interpreter, broker, client, sleep, () => {}, targetKinds) } }
 afterEach(() => { while (stores.length) stores.pop()!.close() })
 
 describe('SidecarSourceEngine', () => {
+  test.each(['connected-ok', 'disconnect'] as const)('fails closed and releases the iterator when %s cannot be recorded', async kind => {
+    let release!: () => void, returned = 0, streamSignal: AbortSignal | undefined, flushed = 0
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const client = {
+      catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        streamSignal = signal
+        try { yield { type: 'connected', connected: { resume: 'ok' } }; await gate }
+        finally { returned++ }
+      }
+    }
+    const { store, interpreter } = await setup(client)
+    const journal = new FaultJournal(join(store.path, '..', `continuity-${kind}.journal`))
+    journal.failOn = kind
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => {}, [], journal)
+    const actualFlush = (engine as any).flushPendingCursor.bind(engine)
+    ;(engine as any).flushPendingCursor = async () => { flushed++; await actualFlush() }
+    engine.start()
+    if (kind === 'disconnect') {
+      for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+      expect(engine.isLive()).toBeTrue()
+      release()
+    }
+    for (let i = 0; i < 30 && (store.sourceStatus().attentionCode !== 'continuity_write_failed' || !returned || !flushed); i++) await Bun.sleep(5)
+    expect(store.sourceStatus()).toMatchObject({ state: 'attention', attentionCode: 'continuity_write_failed' })
+    expect(streamSignal?.aborted).toBeTrue()
+    expect(returned).toBe(1)
+    expect(flushed).toBe(1)
+    expect((engine as any).continuityTimer).toBeUndefined()
+    expect(() => engine.start()).toThrow('continuity_failed')
+    release(); await engine.stop()
+  })
+  test('a stop-marker write failure cannot interrupt source cleanup', async () => {
+    const client = {
+      catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },
+      events: async function* (_cursor: unknown, signal: AbortSignal) {
+        yield { type: 'connected', connected: { resume: 'ok' } }
+        await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+      }
+    }
+    const { store, interpreter } = await setup(client)
+    const journal = new FaultJournal(join(store.path, '..', 'continuity-stop.journal'))
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => {}, [], journal)
+    engine.start()
+    for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue()
+    journal.failOn = 'stop'
+    await engine.stop()
+    expect(store.sourceStatus()).toMatchObject({ state: 'attention', attentionCode: 'continuity_write_failed' })
+    expect((engine as any).continuityTimer).toBeUndefined()
+    expect(() => journal.record('heartbeat')).toThrow('continuity_closed_or_invalid')
+  })
+  test('does not claim live when both journal and attention-store writes fail', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const client = {
+      catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },
+      events: async function* () { yield { type: 'connected', connected: { resume: 'ok' } }; await gate }
+    }
+    const { store, interpreter } = await setup(client)
+    const journal = new FaultJournal(join(store.path, '..', 'continuity-double-failure.journal'))
+    const engine = new SidecarSourceEngine(store, interpreter, new ConsumerBroker(store), client as any, undefined, () => {}, [], journal)
+    engine.start()
+    for (let i = 0; i < 30 && !engine.isLive(); i++) await Bun.sleep(5)
+    expect(engine.isLive()).toBeTrue()
+    const original = store.sourceHealth.bind(store)
+    store.sourceHealth = ((state: any, code?: string) => {
+      if (state === 'attention') throw new Error('synthetic_store_failure')
+      return original(state, code)
+    }) as typeof store.sourceHealth
+    journal.failOn = 'disconnect'; release()
+    for (let i = 0; i < 30 && !(engine as any).continuityFailed; i++) await Bun.sleep(5)
+    expect(store.sourceStatus().state).toBe('live')
+    expect(engine.isLive()).toBeFalse()
+    expect((engine as any).continuityTimer).toBeUndefined()
+    await expect(engine.activateDelivery(async () => {})).rejects.toThrow('official_source_not_live')
+    store.sourceHealth = original
+    await engine.stop()
+  })
   test('records authoritative connected/gap/live transitions for a post-baseline canary window', async () => {
     const client = {
       catalog: async () => [], session: async () => { throw new Error('unexpected detail') }, messages: async () => { throw new Error('unexpected messages') },

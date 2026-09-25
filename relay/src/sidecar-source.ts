@@ -4,7 +4,7 @@ import { OfficialHapiClient, OfficialHapiError, type OfficialStreamItem } from '
 import { SidecarStorageLimitError, type CatalogItem, type SidecarStore } from './sidecar-store'
 import type { OfficialSession, OfficialSessionSummary } from './types'
 import type { ConsumerKind } from './sidecar-store'
-import type { SourceContinuityJournal } from './source-continuity'
+import type { ContinuityKind, SourceContinuityJournal } from './source-continuity'
 
 type SourceClient = Pick<OfficialHapiClient, 'catalog' | 'session' | 'messages' | 'events'>
 
@@ -21,6 +21,7 @@ export class SidecarSourceEngine {
   private pendingCatalogRemovals = new Set<string>()
   private lastCursorFlushAt = 0
   private continuityTimer?: ReturnType<typeof setInterval>
+  private continuityFailed = false
   constructor(
     private readonly store: SidecarStore,
     private readonly interpreter: EventInterpreter,
@@ -35,28 +36,45 @@ export class SidecarSourceEngine {
   async activateDelivery(commit: () => Promise<void>) {
     await this.exclusive(async () => { if (!this.isLive()) throw new Error('official_source_not_live'); await commit(); this.setDeliveryActive(true) })
   }
-  isLive() { return this.store.sourceStatus().state === 'live' }
-  start() { if (!this.task) {
+  isLive() { return !!this.controller && !this.controller.signal.aborted && !this.continuityFailed && this.store.sourceStatus().state === 'live' }
+  start() { if (this.continuityFailed) throw new Error('continuity_failed'); if (!this.task) {
     this.controller = new AbortController()
     if (this.continuity) {
       this.continuityTimer = setInterval(() => {
         if (!this.isLive()) return
-        try { this.continuity?.record('heartbeat') }
-        catch { this.controller?.abort(); this.store.sourceHealth('attention', 'continuity_write_failed') }
+        try { this.recordContinuity('heartbeat') } catch { /* recordContinuity fails closed */ }
       }, 5_000)
       this.continuityTimer.unref?.()
     }
     const task = this.run(this.controller.signal); this.task = task
-    task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined)
+    task.catch(() => { if (this.continuity && !this.continuityFailed) this.failContinuity() })
+      .finally(() => { this.stopHeartbeat(); if (this.task === task) this.task = undefined }).catch(() => undefined)
   } }
   async stop() {
-    if (this.continuityTimer) clearInterval(this.continuityTimer)
+    this.stopHeartbeat()
     this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined
-    this.continuity?.close()
+    try { this.continuity?.close() } catch { this.failContinuity() }
   }
 
+  private stopHeartbeat() {
+    if (this.continuityTimer) clearInterval(this.continuityTimer)
+    this.continuityTimer = undefined
+  }
+  private failContinuity() {
+    if (this.continuityFailed) return
+    this.continuityFailed = true
+    this.stopHeartbeat()
+    this.controller?.abort()
+    try { this.store.sourceHealth('attention', 'continuity_write_failed') } catch { /* source stays stopped even if storage fails */ }
+  }
+  private recordContinuity(kind: ContinuityKind) {
+    if (!this.continuity || this.continuityFailed) return
+    try { this.continuity.record(kind) }
+    catch { this.failContinuity(); throw new Error('continuity_write_failed') }
+  }
   private sourceHealth(state: 'connecting' | 'attention' | 'live', code?: string) {
-    this.continuity?.record(state)
+    if (this.continuityFailed) throw new Error('continuity_failed')
+    this.recordContinuity(state)
     this.store.sourceHealth(state, code)
   }
 
@@ -83,23 +101,27 @@ export class SidecarSourceEngine {
     if (saved && !this.baselineReady) { this.interpreter.restoreState(saved); this.baselineReady = true }
     const local = new AbortController(), activeSignal = AbortSignal.any([signal, local.signal])
     const iterator = this.client.events(this.store.sourceCursor(), activeSignal)[Symbol.asyncIterator]()
-    const first = await iterator.next()
-    if (first.done || first.value.type !== 'connected') throw new OfficialHapiError('contract_invalid', true)
-    this.continuity?.record(first.value.connected.resume === 'gap' ? 'connected-gap' : 'connected-ok')
-    const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
-    const pump = this.pump(iterator, queue, activeSignal)
+    let queue: BoundedEventQueue | undefined
     try {
+      const first = await iterator.next()
+      if (first.done || first.value.type !== 'connected') throw new OfficialHapiError('contract_invalid', true)
+      this.recordContinuity(first.value.connected.resume === 'gap' ? 'connected-gap' : 'connected-ok')
+      queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
+      const pump = this.pump(iterator, queue, activeSignal)
       if (first.value.connected.resume === 'gap') this.rollbackPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
       this.sourceHealth('live')
       for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
       await pump
-    } catch (error) { queue.throwIfFailed(); throw error }
+    } catch (error) { queue?.throwIfFailed(); throw error }
     finally {
-      try { this.continuity?.record('disconnect') }
+      try { this.recordContinuity('disconnect') }
       finally {
-        local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined)
-        await this.exclusive(async () => this.flushPendingCursor())
+        try { local.abort(); queue?.close() }
+        finally {
+          try { await iterator.return?.(undefined) } catch { /* abort can reject the iterator */ }
+          finally { await this.exclusive(async () => this.flushPendingCursor()) }
+        }
       }
     }
   }
