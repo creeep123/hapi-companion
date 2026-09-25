@@ -58,6 +58,8 @@ The report contains only event kind, count, high-water sequence and an HMAC-SHA2
 
 The specification's full Phase B also calls for real completion, task, permission and input-request comparisons. Until those are observed in a controlled canary and pass, or the product owner explicitly revises that requirement, record Phase B as incomplete and do not cut over Mac or phone notifications.
 
+The follow-on [five-kind canary plan](V0_6_PHASE_B_FIVE_KIND_CANARY.md) defines the separate authorization, safe event triggers, private one-to-one comparison, stop/restore conditions and remaining Phase C gate. The aggregate shadow report alone cannot prove one-to-one parity or event timing.
+
 ## Authorized cutover
 
 Cut over only in a quiet window with no active turn. Drain the patched consumers and stop the old ntfy dispatcher. With both writers stopped, copy the latest legacy Relay JSON to the Sidecar's private state path with the same owner and mode, preserving the untouched legacy original for rollback. Change the environment ceiling to `HAPI_SIDECAR_DELIVERY_MODE=active`, restart the Sidecar, switch the approved proxy routes from loopback `8789` to `8791`, and wait until authenticated `GET /v2/status` reports `source.state=live` while `delivery.enabled=false`. Generate a new one-time pair code only when the Mac has no retained management binding.

@@ -339,6 +339,8 @@ Run the local composite compatibility matrix against a clean official HAPI v0.30
 
 After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. The first 30-minute trial is a **bounded partial Phase-B** check of resources, reconnect/gap behavior and at least one real `ready` matched with the patched path. Fixtures for completion, task, permission and input-request prove local interpretation only; they are not real VM parity evidence. Full Phase B still calls for comparison of real ready, completion, task, permission and input flows with the current patched stream across a controlled canary sequence. Until those remaining real comparisons pass, or the product owner explicitly changes this requirement in the spec, mark Phase B incomplete and do not cut over. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
 
+The [five-kind canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md) is the operational acceptance path after the first trial. Its event generation, VM-local one-to-one comparator and second shadow window each have separate gates; no production action is implied by this specification.
+
 ### Phase C: cutover
 
 Use a short window with no active turns:

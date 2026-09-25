@@ -103,4 +103,18 @@ describe('SidecarStore', () => {
     expect(report).toMatchObject({ version: 1, highWaterSeq: 2, observations: [{ kind: 'ready', count: 2 }] })
     expect(report.observations[0]?.sessionFingerprint).toMatch(/^[0-9a-f]{64}$/); expect(encoded).not.toContain('private-session'); expect(encoded).not.toContain('Secret')
   })
+  test('reports all five semantic kinds without content or shadow delivery rows', async () => {
+    const s = await store(); s.bindSource('https://hapi.example', 'ns')
+    const kinds = ['ready', 'session-completed', 'task-notification', 'permission-request', 'input-request'] as const
+    kinds.forEach((kind, index) => s.append({
+      sourceKey: `canary/${index}`,
+      event: event({ kind, sessionId: 'private-canary-session', sessionName: 'Private canary title', body: 'Private canary body', requestId: `private-request-${index}` })
+    }, `cursor:${index}`, []))
+    const report = s.shadowReport(new TextEncoder().encode('b'.repeat(32)))
+    expect(report.observations.map(item => [item.kind, item.count])).toEqual([...kinds].sort().map(kind => [kind, 1]))
+    expect(new Set(report.observations.map(item => item.sessionFingerprint)).size).toBe(1)
+    expect(s.db.query('SELECT COUNT(*) AS count FROM deliveries').get()).toEqual({ count: 0 })
+    const encoded = JSON.stringify(report)
+    for (const secret of ['private-canary-session', 'Private canary title', 'Private canary body', 'private-request']) expect(encoded).not.toContain(secret)
+  })
 })
