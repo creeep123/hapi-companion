@@ -333,11 +333,11 @@ V2 ntfy activation maps the existing receiver installation ID, topic secret, pol
 
 ### Phase A: local and integration validation
 
-Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. One real Runner-generated ready event remains a private shadow gate; rare kinds do not have to occur naturally.
+Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. One real Runner-generated ready event is the minimum gate for the **first bounded partial Phase-B shadow**; rare kinds do not have to occur naturally in that 30-minute trial. This trial alone does not complete Phase B or authorize cutover.
 
 ### Phase B: production shadow
 
-After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. Compare its counts and fingerprint with one controlled canary sequence and the current patched stream for real ready, completion, task, permission and input flows. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
+After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. The first 30-minute trial is a **bounded partial Phase-B** check of resources, reconnect/gap behavior and at least one real `ready` matched with the patched path. Fixtures for completion, task, permission and input-request prove local interpretation only; they are not real VM parity evidence. Full Phase B still calls for comparison of real ready, completion, task, permission and input flows with the current patched stream across a controlled canary sequence. Until those remaining real comparisons pass, or the product owner explicitly changes this requirement in the spec, mark Phase B incomplete and do not cut over. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
 
 ### Phase C: cutover
 
@@ -360,15 +360,15 @@ Only after an observation period and explicit authorization may Safe Updater rem
 
 Before an authorized Sidecar deployment or schema migration, retain:
 
-- prior Sidecar binary/package and service unit;
-- consistent Sidecar state/SQLite snapshot and checksum;
+- prior Sidecar binary/package tree and the exact `current` symlink target, with hashes; prior base service unit, drop-ins, environment and enabled/active state;
+- matching Sidecar control JSON, consistent SQLite snapshot and secret-file set, with checksums, ownership and modes;
 - old Relay JSON state;
 - current patched HAPI binary/package and its required database snapshot;
 - prior Mac transport binding in Keychain.
 
-For a live WAL database, backup must use SQLite's online backup API into a new file followed by `PRAGMA integrity_check`, file sync, mode/owner verification and SHA-256 recording. The alternative is a stopped service followed by `PRAGMA wal_checkpoint(TRUNCATE)` and a copy of the database after confirming no `-wal`/`-shm` writer remains. Copying only a live main database file is forbidden. Secret files are copied separately with `0600`, excluded from ordinary diagnostics, and checksummed without printing their content.
+The installer can overwrite an inactive Sidecar's unit and version-path binary and repoint `/opt/hapi-companion-sidecar/current`; it does not create or verify a rollback set. If an old installation or private state exists, the complete matched set above must be captured and verified **before invoking the installer**, even when the old service is inactive. Stop an active old Sidecar only within the separately approved scope and confirm no JSON/SQLite writer remains before capturing the matched set. A missing old binary, symlink target, unit/drop-in, JSON, SQLite or secret backup is a pre-install NO-GO. For a live WAL database, backup must use SQLite's online backup API into a new file followed by `PRAGMA integrity_check`, file sync, mode/owner verification and SHA-256 recording. The alternative is a stopped service followed by `PRAGMA wal_checkpoint(TRUNCATE)` and a copy of the database after confirming no `-wal`/`-shm` writer remains. Copying only a live main database file is forbidden. Secret files are copied separately with `0600`, excluded from ordinary diagnostics, and checksummed without printing their content.
 
-Every schema release must test restore into the prior binary. If the prior binary cannot read the new schema, rollback restores its pre-migration database plus matching secret files; an in-place downgrade is forbidden. Restore acceptance runs integrity check, schema version check, non-secret row counts, consumer cursor checks and a disabled-delivery startup before traffic is enabled.
+Every schema release must test restore into the prior binary. If the prior binary cannot read the new schema, rollback restores its pre-migration database plus matching secret files; an in-place downgrade is forbidden. After a failed shadow attempt, stop the new Sidecar and restore the prior binary/package, `current` target, unit/drop-ins, environment, matched JSON/SQLite and secrets together. Restore acceptance checks file hashes/modes, SQLite integrity and schema version, non-secret row counts and consumer cursors, and a disabled-delivery startup with the old package against an isolated copy of that state before any traffic is enabled. Return to the prior active/enabled state only after those checks; if the prior Sidecar was inactive, leave it inactive. If restoration fails, keep Sidecar stopped and the legacy Relay authoritative, and record an unresolved recovery task.
 
 Rollback order is: stop new delivery, drain already-observed Sidecar events when safe, disable its consumers, restore the previous Relay/patch path, then switch the Mac binding. Restoring a HAPI binary across schema boundaries requires its matching database snapshot. Do not re-enable both ntfy dispatchers.
 

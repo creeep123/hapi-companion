@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-25
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness but failed the active-traffic resource gate. Alpha.9 reduced repeated reads and writes and passed local tests and packaging; its VM resource use and real event behavior have not been measured. The private shadow remains stopped pending separate approval for one bounded trial.
+**当前状态：** Mac 上的 v0.5.1 已发布并安装。服务器仍用经过验收的 HAPI 通知补丁，以及现役手机通知转发程序（Relay）。独立通知服务 alpha.9 已通过本地测试，减少了先前版本过于频繁的读取和写盘；它在 VM 上的资源占用和真实事件表现尚未验收。该服务目前停止，下一步需单独批准一次最长 30 分钟的旁路观察：只接收事件，不发送通知。
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepts the reliability tradeoff: after a Hub restart or official event-stream replay gap, completion events outside the available replay may be missed; the number has no fixed maximum. Do not add transcript polling or another durability layer for that exceptional case. Alpha.8's resource failure came from repeated session reads and writes. Alpha.9 updates the affected session in memory and batches routine progress writes. Production remains on the proven patched transport until the new service passes VM resource and real-event shadow checks, then a separately approved client cutover. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [shadow pre-start checklist](../deployments/V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+HAPI 官方只短暂保留事件记录。服务器重启或断线太久时，独立服务可能拿不到那段记录，从而漏掉完成提醒；漏掉多少没有固定上限，产品负责人已接受这一边界。alpha.9 的第一次 VM 观察只验证资源、断线恢复和至少一条“助手完成一轮回复”（ready）事件，属于第二阶段的**有限验证**。规范中其他四类真实事件的对照还没完成，所以这次即使通过，也不能宣称完整验收或切换 Mac、手机通知。生产继续使用现有通知路径。[技术规范](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md)、[架构决定](../adr/0008-official-hapi-sidecar.md)、[启动前清单](../deployments/V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md)。
 
 ## Released hotfix — V0.5.1 single instance
 
