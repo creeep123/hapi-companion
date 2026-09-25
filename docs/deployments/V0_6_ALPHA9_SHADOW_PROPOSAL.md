@@ -2,6 +2,8 @@
 
 Status: prepared locally; production start requires a separate owner approval. The patched Hub, Runner and legacy Relay remain the only live notification path.
 
+Use the [pre-start checklist](V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md) to record approval, VM baseline, effective resource limits, stop conditions and cleanup before any first start.
+
 ## Exact candidate
 
 - Source: Companion implementation commit `f6386c23fcbb8366533a79e65a023cf29482bd7c`, documentation commit `4363a00cb0cc2f37bd3a74f1cf25bef01233442c`, against clean official HAPI baseline `0239edf38e2da653d662f31039e24ccea04c7837`.
@@ -19,7 +21,7 @@ The packaged service currently says `Restart=on-failure` and has no hard resourc
 
 Record 60-second CPU/RSS/write-rate samples at idle and during representative traffic, database/WAL size, fsync rate, source state and attention code, reconnect count and delivery-row count. Require at least four 75-second idle/reconnect cycles and one real Runner-generated `ready` observation matched privately against the patched path. Exercise Sidecar-only disconnect/resume and an isolated forced `resume=gap` without restarting the production Hub. The comparison report contains only counts, timing and keyed fingerprints; destroy its temporary key and report after the result is recorded.
 
-Stop this attempt immediately on source attention/crash/restart, any delivery row, public listener or binding change, Hub/Relay health degradation, an invalid credential boundary, database plus WAL at 80 MiB, RSS above 100 MiB, sustained ordinary-load CPU above 1% or resource throttling. Alpha.8's 215–431 KB/s writes and roughly 92 fsync/s are known failures; reaching that pattern again is a stop condition. If representative traffic does not occur in 30 minutes, record the missing evidence and stop rather than extending the window implicitly.
+Stop this attempt immediately on source attention/crash/restart, any delivery row, public listener or binding change, Hub/Relay health degradation, an invalid credential boundary, database plus WAL at 80 MiB, RSS above 100 MiB or resource throttling. Two consecutive 60-second ordinary-load samples above 1% CPU, 50 KB/s writes or 20 fsync/s also stop the attempt. Alpha.8's 215–431 KB/s writes and roughly 92 fsync/s are known failures. If representative traffic does not occur in 30 minutes, record the missing evidence and stop rather than extending the window implicitly.
 
 ## Stop and rollback
 

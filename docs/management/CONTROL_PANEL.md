@@ -1,13 +1,13 @@
 # HAPI Companion Control Panel
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-25
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness but failed the active-traffic resource gate. Source review then confirmed that official HAPI v0.30.7 already sends versioned structured session patches and its own Web client applies them without REST refetch. V0.6 development has resumed with that simpler reducer design; the private shadow remains stopped until a new candidate passes local gates.
+**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness but failed the active-traffic resource gate. Alpha.9 reduced repeated reads and writes and passed local tests and packaging; its VM resource use and real event behavior have not been measured. The private shadow remains stopped pending separate approval for one bounded trial.
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepts the narrow reliability tradeoff: after a Hub restart or official SSE replay gap, an occasional ready/task event outside replay may be missed. Do not add transcript polling or another durability layer for that exceptional case. Alpha.8's resource failure came from treating official structured patches as invalidations, causing repeated detail/catalog reads and full-state writes. The replacement follows official HAPI Web semantics: merge versioned `metadata` and `agentState` in memory, update one catalog row, and durably batch non-notifying cursor progress. Production remains on the proven patched transport until the replacement passes correctness, resource and real-device shadow gates. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+The product owner accepts the reliability tradeoff: after a Hub restart or official event-stream replay gap, completion events outside the available replay may be missed; the number has no fixed maximum. Do not add transcript polling or another durability layer for that exceptional case. Alpha.8's resource failure came from repeated session reads and writes. Alpha.9 updates the affected session in memory and batches routine progress writes. Production remains on the proven patched transport until the new service passes VM resource and real-event shadow checks, then a separately approved client cutover. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [shadow pre-start checklist](../deployments/V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
 
 ## Released hotfix — V0.5.1 single instance
 

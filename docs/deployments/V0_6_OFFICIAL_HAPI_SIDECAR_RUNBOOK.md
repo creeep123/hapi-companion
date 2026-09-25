@@ -4,6 +4,8 @@ This is a candidate runbook. It does not authorize a production change. Producti
 
 The exact alpha.9 private-shadow artifact, resource limits, 30-minute window and stop conditions are recorded in [the shadow proposal](V0_6_ALPHA9_SHADOW_PROPOSAL.md). A separate approval is required before starting it on the VM.
 
+Before an authorized first start, fill in the [alpha.9 pre-start checklist](V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md).
+
 ## Preconditions
 
 - clean official HAPI package passes the compatibility suite;
