@@ -343,6 +343,8 @@ The [five-kind canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md) is 
 
 The local follow-on implementation adds an opt-in, service-owned continuity journal outside the Sidecar database. It fsyncs a bounded chain of source connection/gap/live/heartbeat/stop transitions without event content. The offline comparator derives one uninterrupted process-run interval from that journal; it rejects hand-written continuity JSON, gaps, restarts and missing end heartbeats. The frozen alpha.9 artifact lacks this journal, so production use requires a new reviewed package and separate authorization. This is operational continuity evidence, not tamper-proof attestation against a privileged operator and not a claim that upstream SSE is durable.
 
+The [Phase B canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md#continuity-recorder-storage-and-authorization-proposal) defines the proposed file path, exact fields, private ownership/modes, bounded cleanup and failure behavior. Enabling it is a storage and deployment-behavior change even though it makes no DB/schema migration. Local code and synthetic tests are not authorization to install a new package or set the environment variable on the VM.
+
 ### Phase C: cutover
 
 Use a short window with no active turns:
