@@ -79,7 +79,7 @@ This is the only module that understands official HAPI wire formats. It owns:
 
 - access-token login and in-memory JWT renewal;
 - the single upstream SSE connection;
-- catalog and session-detail calls, plus bounded message preview enrichment for a live ready event;
+- catalog and session-detail calls for cold start and gap recovery, plus bounded message preview enrichment for a live ready event;
 - SSE parsing, heartbeat timeout, reconnect backoff and `resume=ok|gap` handling;
 - one isolated state machine per configured namespace.
 
@@ -102,6 +102,8 @@ The interpreter consumes typed observations and owns session aggregate state:
 - pending request IDs and tools;
 - legacy optional message-watermark fields, cleared whenever a gap baseline is committed;
 - ready cooldown and task/completion suppression window.
+
+For a structured `session-updated` event it applies the patch directly. Scalar fields replace the corresponding aggregate field; `metadata` and `agentState` are atomic `{version,value}` wrappers and apply only when their version is newer than the aggregate watermark. A full Session payload replaces the aggregate. Unknown or malformed patch shapes fail closed to a targeted session-detail fetch; known structured patches never trigger a full catalog refresh.
 
 It emits a version 1 `CompanionEvent` candidate only when a supported semantic transition is proven. It does not perform network delivery.
 
@@ -181,7 +183,9 @@ Normalize completion status and bounded summary. Malformed structured content is
 
 ### 6.4 Input and permission request
 
-After a session-added or a semantically relevant session-updated observation, fetch full session detail and compare the new request-ID set with the stored set. Session patches that contain only catalog timestamps, unchanged turn status, or model/settings metadata cannot create or resolve a Companion notification; the adapter advances their official SSE cursor and catalog timestamps in bounded batches without fetching session detail or rewriting the interpreter checkpoint. The first patch, the first later harmless patch observed after five seconds, every 64th pending patch, the next semantic event, connection close, and orderly stop flush the latest cursor. The 64-event limit preserves substantial margin below HAPI's global 256-event replay ceiling; it does not claim that the upstream ring itself is durable. An idle non-semantic tail may remain in memory until another trigger, and a crash before a batch commit can only replay classified non-semantic patches. Unknown patch fields and any changed turn-status field fail closed to the full refresh path. When a new request first appears, wait 500 ms and fetch detail again; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately while preserving input/permission and turn-transition detection.
+`session-added` carries a full Session snapshot. A structured `session-updated` can carry `agentState: {version,value}`; compare the request IDs in that value with the aggregate's prior set without fetching session detail. When a new request first appears, wait 500 ms and perform one targeted detail confirmation; notify only IDs that remain pending. This avoids flashing a notification for a request that resolves immediately. A malformed or unknown session patch also performs one targeted detail fetch as a compatibility fallback. Neither path refreshes the full catalog.
+
+Known structured patches update the affected catalog row from the same in-memory aggregate. Non-notifying patches advance the official cursor, aggregate checkpoint and changed row in one bounded transaction. Flush after at most 64 frames, on the first subsequent frame after five seconds, before a notification transaction, on connection close and on orderly stop. An idle tail can remain in memory until one of those triggers. Notification-producing transitions commit the candidate, current aggregate checkpoint, affected catalog row and cursor atomically. A crash before a non-notifying batch commit may replay that tail; version watermarks and semantic source keys make it idempotent.
 
 After removing an optional `functions.` prefix, these tools are input requests: `request_user_input`, `AskUserQuestion`, `ask_user_question`, and `CursorAskQuestion`. Other tools are permission requests. The full request object is authoritative; catalog request-kind summaries are insufficient.
 
@@ -329,11 +333,17 @@ V2 ntfy activation maps the existing receiver installation ID, topic secret, pol
 
 ### Phase A: local and integration validation
 
-Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. One real Runner-generated ready event remains a private shadow gate; rare kinds do not have to occur naturally.
+Run the local composite compatibility matrix against a clean official HAPI v0.30.7 checkout: upstream route/replay/namespace tests, a real-process authentication/catalog/SSE handshake, and Sidecar adapter/interpreter fixtures for all five semantic kinds. No production change. One real Runner-generated ready event is the minimum gate for the **first bounded partial Phase-B shadow**; rare kinds do not have to occur naturally in that 30-minute trial. This trial alone does not complete Phase B or authorize cutover.
 
 ### Phase B: production shadow
 
-After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. Compare its counts and fingerprint with one controlled canary sequence and the current patched stream for real ready, completion, task, permission and input flows. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
+After separate deployment authorization, run the Sidecar source/interpreter with delivery disabled. A VM-local report groups observations by kind and an HMAC-SHA256 session fingerprint derived with a temporary operator key; it never prints session IDs or content. The first 30-minute trial is a **bounded partial Phase-B** check of resources, reconnect/gap behavior and at least one real `ready` matched with the patched path. Fixtures for completion, task, permission and input-request prove local interpretation only; they are not real VM parity evidence. Full Phase B still calls for comparison of real ready, completion, task, permission and input flows with the current patched stream across a controlled canary sequence. Until those remaining real comparisons pass, or the product owner explicitly changes this requirement in the spec, mark Phase B incomplete and do not cut over. Never enable a second ntfy dispatcher. Delete the temporary key and report after recording only the non-sensitive pass/fail result.
+
+The [five-kind canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md) is the operational acceptance path after the first trial. Its event generation, VM-local one-to-one comparator and second shadow window each have separate gates; no production action is implied by this specification.
+
+The local follow-on implementation adds an opt-in, service-owned continuity journal outside the Sidecar database. It fsyncs a bounded chain of source connection/gap/live/heartbeat/stop transitions without event content. A clean stop seals the file; any write/sync failure leaves it unsealed. The offline comparator derives one uninterrupted process-run interval only from a sealed file; it rejects hand-written continuity JSON, gaps, restarts and missing end heartbeats. The frozen alpha.9 artifact lacks this journal, so production use requires a new reviewed package and separate authorization. This is operational continuity evidence, not tamper-proof attestation against a privileged operator and not a claim that upstream SSE is durable.
+
+The [Phase B canary plan](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md#continuity-recorder-storage-and-authorization-proposal) defines the proposed file path, exact fields, private ownership/modes, bounded cleanup and failure behavior. Enabling it is a storage and deployment-behavior change even though it makes no DB/schema migration. Local code and synthetic tests are not authorization to install a new package or set the environment variable on the VM.
 
 ### Phase C: cutover
 
@@ -356,15 +366,15 @@ Only after an observation period and explicit authorization may Safe Updater rem
 
 Before an authorized Sidecar deployment or schema migration, retain:
 
-- prior Sidecar binary/package and service unit;
-- consistent Sidecar state/SQLite snapshot and checksum;
+- prior Sidecar binary/package tree and the exact `current` symlink target, with hashes; prior base service unit, drop-ins, environment and enabled/active state;
+- matching Sidecar control JSON, consistent SQLite snapshot and secret-file set, with checksums, ownership and modes;
 - old Relay JSON state;
 - current patched HAPI binary/package and its required database snapshot;
 - prior Mac transport binding in Keychain.
 
-For a live WAL database, backup must use SQLite's online backup API into a new file followed by `PRAGMA integrity_check`, file sync, mode/owner verification and SHA-256 recording. The alternative is a stopped service followed by `PRAGMA wal_checkpoint(TRUNCATE)` and a copy of the database after confirming no `-wal`/`-shm` writer remains. Copying only a live main database file is forbidden. Secret files are copied separately with `0600`, excluded from ordinary diagnostics, and checksummed without printing their content.
+The installer can overwrite an inactive Sidecar's unit and version-path binary and repoint `/opt/hapi-companion-sidecar/current`; it does not create or verify a rollback set. If an old installation or private state exists, the complete matched set above must be captured and verified **before invoking the installer**, even when the old service is inactive. Stop an active old Sidecar only within the separately approved scope and confirm no JSON/SQLite writer remains before capturing the matched set. A missing old binary, symlink target, unit/drop-in, JSON, SQLite or secret backup is a pre-install NO-GO. For a live WAL database, backup must use SQLite's online backup API into a new file followed by `PRAGMA integrity_check`, file sync, mode/owner verification and SHA-256 recording. The alternative is a stopped service followed by `PRAGMA wal_checkpoint(TRUNCATE)` and a copy of the database after confirming no `-wal`/`-shm` writer remains. Copying only a live main database file is forbidden. Secret files are copied separately with `0600`, excluded from ordinary diagnostics, and checksummed without printing their content.
 
-Every schema release must test restore into the prior binary. If the prior binary cannot read the new schema, rollback restores its pre-migration database plus matching secret files; an in-place downgrade is forbidden. Restore acceptance runs integrity check, schema version check, non-secret row counts, consumer cursor checks and a disabled-delivery startup before traffic is enabled.
+Every schema release must test restore into the prior binary. If the prior binary cannot read the new schema, rollback restores its pre-migration database plus matching secret files; an in-place downgrade is forbidden. After a failed shadow attempt, stop the new Sidecar and restore the prior binary/package, `current` target, unit/drop-ins, environment, matched JSON/SQLite and secrets together. Restore acceptance checks file hashes/modes, SQLite integrity and schema version, non-secret row counts and consumer cursors, and a disabled-delivery startup with the old package against an isolated copy of that state before any traffic is enabled. Return to the prior active/enabled state only after those checks; if the prior Sidecar was inactive, leave it inactive. If restoration fails, keep Sidecar stopped and the legacy Relay authoritative, and record an unresolved recovery task.
 
 Rollback order is: stop new delivery, drain already-observed Sidecar events when safe, disable its consumers, restore the previous Relay/patch path, then switch the Mac binding. Restoring a HAPI binary across schema boundaries requires its matching database snapshot. Do not re-enable both ntfy dispatchers.
 
@@ -405,6 +415,11 @@ Release acceptance records measured idle/load values and verifies journal bounds
 - deterministic identity, bounded sanitized content and exact encoded URL;
 - a 230-session gap with arbitrarily deep message history makes zero message-history calls and reaches live state;
 - gap snapshot/buffered-live races preserve order and deduplicate by official SSE frame ID;
+- official structured metadata and agent-state patches update one aggregate without REST/catalog refetch;
+- stale or duplicate versioned patches do not move metadata/agent-state backward or duplicate a request notification;
+- malformed/unknown patches use one targeted detail fallback and never refresh the full catalog;
+
+The agreed test seams are: official SSE frame to `EventInterpreter` result; `SidecarSourceEngine` against the official-client interface; and committed Companion event/catalog/cursor behavior through `SidecarStore`. Tests do not couple to private helper calls.
 
 ### 15.3 Durability and consumers
 
@@ -450,3 +465,4 @@ Every candidate official HAPI version must run the composite compatibility suite
 - No HAPI access credential appears outside the VM trust boundary or in observable output.
 - Technical, security and client migration reviews have no unresolved blocking findings.
 - Deployment and patch retirement remain gated by explicit authorization and real-device acceptance.
+- Under representative active-session metadata traffic, the Sidecar meets the average CPU budget, performs no per-patch REST/catalog refresh, and reduces steady-state durable writes to bounded cursor checkpoints plus real notification commits.

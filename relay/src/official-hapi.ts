@@ -1,5 +1,5 @@
 import type { Fetcher } from './ntfy'
-import type { OfficialFrame, OfficialMessagesPage, OfficialSession, OfficialSessionSummary, OfficialSyncEvent } from './types'
+import { isOfficialSession, type OfficialFrame, type OfficialMessagesPage, type OfficialSession, type OfficialSessionSummary, type OfficialSyncEvent } from './types'
 
 export type ResumeVerdict = 'ok' | 'gap'
 export type OfficialConnected = { resume: ResumeVerdict; subscriptionId?: string }
@@ -83,7 +83,7 @@ export class OfficialHapiClient {
   async session(id: string, signal?: AbortSignal): Promise<OfficialSession> {
     const response = await this.request(`/api/sessions/${encodeURIComponent(id)}`, { signal })
     const value = await response.json().catch(() => null) as any
-    return parseSession(value?.session)
+    return parseSession(value?.session, id)
   }
 
   async messages(id: string, query: { afterAt?: number; afterSeq?: number; untilAt?: number; untilSeq?: number; epoch?: number; limit?: number } = {}, signal?: AbortSignal): Promise<OfficialMessagesPage> {
@@ -169,5 +169,8 @@ function parseSessionSummary(value: unknown): OfficialSessionSummary {
   if (!isObject(value) || typeof value.id !== 'string' || !value.id || value.id.length > 512) throw new OfficialHapiError('contract_invalid', true)
   return value as OfficialSessionSummary
 }
-function parseSession(value: unknown): OfficialSession { return parseSessionSummary(value) as OfficialSession }
+function parseSession(value: unknown, expectedId?: string): OfficialSession {
+  if (!isOfficialSession(value, expectedId)) throw new OfficialHapiError('contract_invalid', true)
+  return value
+}
 const isObject = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)

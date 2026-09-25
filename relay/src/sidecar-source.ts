@@ -1,9 +1,10 @@
 import type { ConsumerBroker } from './consumer-broker'
 import { EventInterpreter } from './interpreter'
 import { OfficialHapiClient, OfficialHapiError, type OfficialStreamItem } from './official-hapi'
-import { SidecarStorageLimitError, type SidecarStore } from './sidecar-store'
+import { SidecarStorageLimitError, type CatalogItem, type SidecarStore } from './sidecar-store'
 import type { OfficialSession, OfficialSessionSummary } from './types'
 import type { ConsumerKind } from './sidecar-store'
+import type { ContinuityKind, SourceContinuityJournal } from './source-continuity'
 
 type SourceClient = Pick<OfficialHapiClient, 'catalog' | 'session' | 'messages' | 'events'>
 
@@ -15,8 +16,12 @@ export class SidecarSourceEngine {
   private mutationTail: Promise<void> = Promise.resolve()
   private pendingCursor?: string
   private pendingCursorCount = 0
-  private pendingCatalogTouches = new Map<string, number>()
+  private pendingBatchStart?: ReturnType<EventInterpreter['exportState']>
+  private pendingCatalogUpserts = new Map<string, CatalogItem>()
+  private pendingCatalogRemovals = new Set<string>()
   private lastCursorFlushAt = 0
+  private continuityTimer?: ReturnType<typeof setInterval>
+  private continuityFailed = false
   constructor(
     private readonly store: SidecarStore,
     private readonly interpreter: EventInterpreter,
@@ -24,28 +29,67 @@ export class SidecarSourceEngine {
     private readonly client: SourceClient,
     private readonly sleep = abortableSleep,
     private readonly onEvent: () => void = () => {},
-    targetKinds: ConsumerKind[] = ['mac', 'ntfy']
+    targetKinds: ConsumerKind[] = ['mac', 'ntfy'],
+    private readonly continuity?: SourceContinuityJournal
   ) { this.deliveryKinds = [...targetKinds] }
   setDeliveryActive(active: boolean) { this.deliveryKinds = active ? ['mac', 'ntfy'] : [] }
   async activateDelivery(commit: () => Promise<void>) {
     await this.exclusive(async () => { if (!this.isLive()) throw new Error('official_source_not_live'); await commit(); this.setDeliveryActive(true) })
   }
-  isLive() { return this.store.sourceStatus().state === 'live' }
-  start() { if (!this.task) { this.controller = new AbortController(); const task = this.run(this.controller.signal); this.task = task; task.finally(() => { if (this.task === task) this.task = undefined }).catch(() => undefined) } }
-  async stop() { this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined }
+  isLive() { return !!this.controller && !this.controller.signal.aborted && !this.continuityFailed && this.store.sourceStatus().state === 'live' }
+  start() { if (this.continuityFailed) throw new Error('continuity_failed'); if (!this.task) {
+    this.controller = new AbortController()
+    if (this.continuity) {
+      this.continuityTimer = setInterval(() => {
+        if (!this.isLive()) return
+        try { this.recordContinuity('heartbeat') } catch { /* recordContinuity fails closed */ }
+      }, 5_000)
+      this.continuityTimer.unref?.()
+    }
+    const task = this.run(this.controller.signal); this.task = task
+    task.catch(() => { if (this.continuity && !this.continuityFailed) this.failContinuity() })
+      .finally(() => { this.stopHeartbeat(); if (this.task === task) this.task = undefined }).catch(() => undefined)
+  } }
+  async stop() {
+    this.stopHeartbeat()
+    this.controller?.abort(); await this.task?.catch(() => undefined); this.controller = undefined
+    try { this.continuity?.close() } catch { this.failContinuity() }
+  }
+
+  private stopHeartbeat() {
+    if (this.continuityTimer) clearInterval(this.continuityTimer)
+    this.continuityTimer = undefined
+  }
+  private failContinuity() {
+    if (this.continuityFailed) return
+    this.continuityFailed = true
+    this.stopHeartbeat()
+    this.controller?.abort()
+    try { this.store.sourceHealth('attention', 'continuity_write_failed') } catch { /* source stays stopped even if storage fails */ }
+  }
+  private recordContinuity(kind: ContinuityKind) {
+    if (!this.continuity || this.continuityFailed) return
+    try { this.continuity.record(kind) }
+    catch { this.failContinuity(); throw new Error('continuity_write_failed') }
+  }
+  private sourceHealth(state: 'connecting' | 'attention' | 'live', code?: string) {
+    if (this.continuityFailed) throw new Error('continuity_failed')
+    this.recordContinuity(state)
+    this.store.sourceHealth(state, code)
+  }
 
   private async run(signal: AbortSignal) {
     let attempt = 0
     while (!signal.aborted) {
-      if (!this.store.ensureCapacity()) { this.store.sourceHealth('attention', 'storage_limit'); await this.sleep(30_000, signal); continue }
-      this.store.sourceHealth('connecting')
+      if (!this.store.ensureCapacity()) { this.sourceHealth('attention', 'storage_limit'); await this.sleep(30_000, signal); continue }
+      this.sourceHealth('connecting')
       try { await this.connection(signal); attempt = 0 }
       catch (error) {
         if (signal.aborted) return
         const permanent = error instanceof OfficialHapiError && error.permanent
         const code = error instanceof SidecarStorageLimitError ? 'storage_limit' : error instanceof SidecarReconcileOverflowError ? 'source_reconcile_overflow' : error instanceof OfficialHapiError ? `source_${error.code}` : 'source_unavailable'
         const requiresAttention = permanent || error instanceof SidecarStorageLimitError || error instanceof SidecarReconcileOverflowError
-        this.store.sourceHealth(requiresAttention ? 'attention' : 'connecting', code)
+        this.sourceHealth(requiresAttention ? 'attention' : 'connecting', code)
         if (permanent) return
         await this.sleep(Math.min(30_000, 1000 * 2 ** Math.min(attempt++, 5)) + Math.floor(Math.random() * 250), signal)
       }
@@ -57,20 +101,38 @@ export class SidecarSourceEngine {
     if (saved && !this.baselineReady) { this.interpreter.restoreState(saved); this.baselineReady = true }
     const local = new AbortController(), activeSignal = AbortSignal.any([signal, local.signal])
     const iterator = this.client.events(this.store.sourceCursor(), activeSignal)[Symbol.asyncIterator]()
-    const first = await iterator.next()
-    if (first.done || first.value.type !== 'connected') throw new OfficialHapiError('contract_invalid', true)
-    const queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
-    const pump = this.pump(iterator, queue, activeSignal)
+    let queue: BoundedEventQueue | undefined
     try {
-      if (first.value.connected.resume === 'gap') this.discardPendingCursor()
+      const first = await iterator.next()
+      if (first.done || first.value.type !== 'connected') throw new OfficialHapiError('contract_invalid', true)
+      this.recordContinuity(first.value.connected.resume === 'gap' ? 'connected-gap' : 'connected-ok')
+      queue = new BoundedEventQueue(2048, 8 * 1024 * 1024, () => local.abort())
+      const pump = this.pump(iterator, queue, activeSignal)
+      if (first.value.connected.resume === 'gap') this.rollbackPendingCursor()
       if (first.value.connected.resume === 'gap' || !this.baselineReady) await this.exclusive(() => this.resync(activeSignal))
-      this.store.sourceHealth('live')
-      for await (const item of queue.items(activeSignal)) await this.exclusive(() => this.apply(item, activeSignal))
+      this.sourceHealth('live')
+      for await (const item of queue.items(activeSignal)) {
+        throwIfAborted(activeSignal)
+        await this.exclusive(() => this.apply(item, activeSignal))
+      }
       await pump
-    } catch (error) { queue.throwIfFailed(); throw error }
+    } catch (error) { queue?.throwIfFailed(); throw error }
     finally {
-      local.abort(); queue.close(); await iterator.return?.(undefined).catch(() => undefined)
-      await this.exclusive(async () => this.flushPendingCursor())
+      try { this.recordContinuity('disconnect') }
+      finally {
+        try { local.abort(); queue?.close() }
+        finally {
+          try { await iterator.return?.(undefined) } catch { /* abort can reject the iterator */ }
+          finally {
+            try { await this.exclusive(async () => this.flushPendingCursor()) }
+            finally {
+              if (this.continuityFailed) {
+                try { this.store.sourceHealth('attention', 'continuity_write_failed') } catch { /* in-memory gate remains closed */ }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -117,6 +179,7 @@ export class SidecarSourceEngine {
         }
       }
       this.interpreter.clearMessageWatermarks()
+      throwIfAborted(signal)
       if (!hadState) this.store.commitBaseline(catalog.map(catalogItem), this.interpreter.exportState())
       else this.store.commitReconciliation(candidates, catalog.map(catalogItem), this.interpreter.exportState(), this.deliveryKinds)
       this.baselineReady = true
@@ -125,49 +188,98 @@ export class SidecarSourceEngine {
   }
 
   private async apply(item: Extract<OfficialStreamItem, { type: 'event' }>, signal: AbortSignal) {
+    throwIfAborted(signal)
     const { id, event } = item.frame
     if (!id) throw new OfficialHapiError('contract_invalid', true)
-    if (event.type === 'session-updated' && event.sessionId && !this.interpreter.sessionPatchNeedsRefresh(event.sessionId, event.data)) {
-      const updatedAt = event.data && typeof event.data === 'object' && Number.isSafeInteger((event.data as any).updatedAt) ? Number((event.data as any).updatedAt) : undefined
-      this.pendingCursor = id; this.pendingCursorCount++
-      if (updatedAt !== undefined) this.pendingCatalogTouches.set(event.sessionId, updatedAt)
-      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 5_000) this.flushPendingCursor()
-      return
-    }
-    this.flushPendingCursor()
-    const before = this.interpreter.exportState()
-    let candidates, catalog: ReturnType<typeof catalogItem>[] | undefined
-    if ((event.type === 'session-added' || event.type === 'session-updated') && event.sessionId) {
-      let session = await this.client.session(event.sessionId, signal)
-      candidates = this.interpreter.observeSession(session, id)
-      if (candidates.some(candidate => candidate.event.kind === 'input-request' || candidate.event.kind === 'permission-request')) {
-        await this.sleep(500, signal)
-        const pending = new Set(requestIds(session = await this.client.session(event.sessionId, signal)))
-        candidates = candidates.filter(candidate => !candidate.event.requestId || pending.has(candidate.event.requestId))
-        this.interpreter.observeSession(session, id)
+    const batchStart = this.pendingBatchStart ?? this.interpreter.exportState()
+    try {
+      let candidates = []
+      let changedSession: OfficialSession | undefined
+      const removedSessionIds: string[] = []
+
+      if (event.type === 'session-updated' && event.sessionId) {
+        const result = this.interpreter.observeSessionUpdate(event.sessionId, event.data, id)
+        if (result.status === 'applied') {
+          candidates = result.candidates
+          changedSession = result.session
+        } else {
+          changedSession = await this.client.session(event.sessionId, signal)
+          candidates = this.interpreter.observeSession(changedSession, id)
+        }
+      } else if (event.type === 'session-added' && event.sessionId) {
+        const result = this.interpreter.observeSessionSnapshot(event.sessionId, event.data, id)
+        if (result.status === 'applied') {
+          candidates = result.candidates
+          changedSession = result.session
+        } else {
+          changedSession = await this.client.session(event.sessionId, signal)
+          candidates = this.interpreter.observeSession(changedSession, id)
+        }
+      } else {
+        candidates = this.interpreter.observe(event, id)
+        if (event.type === 'session-removed' && event.sessionId) removedSessionIds.push(event.sessionId)
       }
-      catalog = await this.refreshCatalog(signal)
-    } else {
-      candidates = this.interpreter.observe(event, id)
+
+      if (changedSession && candidates.some(candidate => candidate.event.kind === 'input-request' || candidate.event.kind === 'permission-request')) {
+        await this.sleep(500, signal)
+        const confirmed = await this.client.session(changedSession.id, signal)
+        const pending = new Set(requestIds(confirmed))
+        const newlyConfirmed = this.interpreter.observeSession(confirmed, id)
+        candidates = [...candidates, ...newlyConfirmed].filter(candidate => !candidate.event.requestId || pending.has(candidate.event.requestId))
+        changedSession = confirmed
+      }
       if (event.sessionId && candidates.some(candidate => candidate.event.kind === 'ready')) {
         const latest = await this.client.messages(event.sessionId, { limit: 50 }, signal)
         candidates = this.interpreter.enrichReady(candidates, latest.messages)
       }
-      if (event.type === 'session-removed' || event.type === 'session-ended') catalog = await this.refreshCatalog(signal)
+
+      const upserts = changedSession ? [catalogItem(changedSession)] : []
+      throwIfAborted(signal)
+      if (candidates.length) {
+        const committedUpserts = new Map(this.pendingCatalogUpserts)
+        for (const value of upserts) committedUpserts.set(value.id, value)
+        const committedRemovals = new Set(this.pendingCatalogRemovals)
+        for (const value of upserts) committedRemovals.delete(value.id)
+        for (const sessionId of removedSessionIds) { committedRemovals.add(sessionId); committedUpserts.delete(sessionId) }
+        this.store.commitObservation(candidates, id, this.interpreter.exportState(), this.deliveryKinds, { upsert: [...committedUpserts.values()], remove: [...committedRemovals] })
+        this.clearPendingCursor()
+        this.broker.signal()
+        this.onEvent()
+        return
+      }
+
+      this.pendingCursor = id
+      this.pendingCursorCount++
+      this.pendingBatchStart ??= batchStart
+      for (const value of upserts) {
+        this.pendingCatalogUpserts.set(value.id, value)
+        this.pendingCatalogRemovals.delete(value.id)
+      }
+      for (const sessionId of removedSessionIds) {
+        this.pendingCatalogRemovals.add(sessionId)
+        this.pendingCatalogUpserts.delete(sessionId)
+      }
+      if (this.lastCursorFlushAt === 0 || this.pendingCursorCount >= 64 || Date.now() - this.lastCursorFlushAt >= 5_000) this.flushPendingCursor()
+    } catch (error) {
+      this.interpreter.restoreState(this.pendingBatchStart ?? batchStart)
+      this.clearPendingCursor()
+      throw error
     }
-    try { this.store.commitObservation(candidates, id, this.interpreter.exportState(), this.deliveryKinds, catalog) }
-    catch (error) { this.interpreter.restoreState(before); throw error }
-    this.broker.signal(); if (candidates.length) this.onEvent()
   }
   private flushPendingCursor() {
     if (!this.pendingCursor) return
     const cursor = this.pendingCursor
-    const touches = [...this.pendingCatalogTouches].map(([sessionId, updatedAt]) => ({ sessionId, updatedAt }))
-    this.store.advanceCursor(cursor, touches)
-    this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear(); this.lastCursorFlushAt = Date.now()
+    try {
+      this.store.advanceCursor(cursor, this.interpreter.exportState(), { upsert: [...this.pendingCatalogUpserts.values()], remove: [...this.pendingCatalogRemovals] })
+      this.clearPendingCursor()
+      this.lastCursorFlushAt = Date.now()
+    } catch (error) {
+      this.rollbackPendingCursor()
+      throw error
+    }
   }
-  private discardPendingCursor() { this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingCatalogTouches.clear() }
-  private async refreshCatalog(signal: AbortSignal) { return (await this.client.catalog(signal)).map(catalogItem) }
+  private clearPendingCursor() { this.pendingCursor = undefined; this.pendingCursorCount = 0; this.pendingBatchStart = undefined; this.pendingCatalogUpserts.clear(); this.pendingCatalogRemovals.clear() }
+  private rollbackPendingCursor() { if (this.pendingBatchStart) this.interpreter.restoreState(this.pendingBatchStart); this.clearPendingCursor() }
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.mutationTail
     let release!: () => void
@@ -184,7 +296,7 @@ function requestIds(session: OfficialSession): string[] {
   return value && typeof value === 'object' ? Object.keys(value) : []
 }
 
-class BoundedEventQueue {
+export class BoundedEventQueue {
   private queue: Array<Extract<OfficialStreamItem, { type: 'event' }>> = []
   private bytes = 0; private waiter?: () => void; private waiterCleanup?: () => void; private error?: unknown; private ended = false
   constructor(private maxItems: number, private maxBytes: number, private onOverflow = () => {}) {}
@@ -211,4 +323,5 @@ class BoundedEventQueue {
   }
 }
 class SidecarReconcileOverflowError extends Error { constructor() { super('source_reconcile_overflow') } }
+function throwIfAborted(signal: AbortSignal) { if (signal.aborted) throw new DOMException('aborted', 'AbortError') }
 function abortableSleep(ms: number, signal: AbortSignal): Promise<void> { return new Promise((resolve, reject) => { const timer = setTimeout(done, ms); function done() { signal.removeEventListener('abort', abort); resolve() } function abort() { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')) } signal.addEventListener('abort', abort, { once: true }) }) }

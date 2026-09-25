@@ -9,6 +9,8 @@ import type { CompanionEvent, StreamEvent } from './types'
 export type ConsumerKind = 'mac' | 'ntfy'
 export type ConsumerCredential = { consumerId: string; token: string }
 export type ConsumerStatus = { version: 1; replayExpired: boolean; replayAvailableFromSeq: number; highWaterSeq: number }
+export type CatalogItem = { id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }
+export type CatalogChanges = { upsert?: CatalogItem[]; remove?: string[] }
 export class SidecarStorageLimitError extends Error { constructor() { super('storage_limit') } }
 
 export class SidecarStore {
@@ -96,7 +98,7 @@ export class SidecarStore {
     if (!row) return { state: 'stopped', updatedAt: 0 }
     return { state: row.state, ...(row.attention_code ? { attentionCode: row.attention_code } : {}), updatedAt: Number(row.updated_at) }
   }
-  replaceCatalog(sessions: Array<{ id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }>) {
+  replaceCatalog(sessions: CatalogItem[]) {
     this.db.transaction(() => {
       const row = this.db.query('SELECT snapshot_generation FROM source_binding WHERE singleton=1').get() as any
       if (!row) throw new Error('source_not_bound')
@@ -107,10 +109,10 @@ export class SidecarStore {
       this.db.query('UPDATE source_binding SET snapshot_generation=?,updated_at=? WHERE singleton=1').run(generation, this.now())
     })()
   }
-  commitBaseline(sessions: Array<{ id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }>, state: InterpreterState) {
+  commitBaseline(sessions: CatalogItem[], state: InterpreterState) {
     this.db.transaction(() => { this.replaceCatalog(sessions); this.writeInterpreterState(state) })()
   }
-  commitReconciliation(candidates: Candidate[], sessions: Array<{ id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }>, state: InterpreterState, targetKinds: ConsumerKind[] = ['mac', 'ntfy']) {
+  commitReconciliation(candidates: Candidate[], sessions: CatalogItem[], state: InterpreterState, targetKinds: ConsumerKind[] = ['mac', 'ntfy']) {
     if (!this.ensureCapacity()) throw new SidecarStorageLimitError()
     this.db.transaction(() => {
       this.insertCandidates(candidates, targetKinds, this.now())
@@ -146,24 +148,42 @@ export class SidecarStore {
   append(candidate: Candidate, upstreamCursor: string, targetKinds: ConsumerKind[] = ['mac', 'ntfy']): number | undefined {
     return this.commitObservation([candidate], upstreamCursor, this.interpreterState(), targetKinds)[0]
   }
-  advanceCursor(upstreamCursor: string, catalogTouches: Array<{ sessionId: string; updatedAt: number }> = []) {
+  advanceCursor(upstreamCursor: string, state?: InterpreterState, catalogChanges?: CatalogChanges) {
     if (!this.ensureCapacity()) throw new SidecarStorageLimitError()
     this.db.transaction(() => {
-      const touch = this.db.query('UPDATE session_catalog SET updated_at=? WHERE id=?')
-      for (const item of catalogTouches) if (Number.isSafeInteger(item.updatedAt)) touch.run(item.updatedAt, item.sessionId)
+      if (catalogChanges) this.applyCatalogChanges(catalogChanges)
+      if (state) this.writeInterpreterState(state)
       this.db.query("UPDATE source_binding SET last_event_id=?,state='live',attention_code=NULL,updated_at=? WHERE singleton=1").run(upstreamCursor, this.now())
     })()
   }
 
-  commitObservation(candidates: Candidate[], upstreamCursor: string, state?: InterpreterState, targetKinds: ConsumerKind[] = ['mac', 'ntfy'], catalog?: Array<{ id: string; title?: string; machineName?: string; updatedAt?: number; active?: boolean }>): number[] {
+  commitObservation(candidates: Candidate[], upstreamCursor: string, state?: InterpreterState, targetKinds: ConsumerKind[] = ['mac', 'ntfy'], catalogChanges?: CatalogChanges): number[] {
     if (!this.ensureCapacity()) throw new SidecarStorageLimitError()
     return this.db.transaction(() => {
       const now = this.now(), sequences = this.insertCandidates(candidates, targetKinds, now)
-      if (catalog) this.replaceCatalog(catalog)
+      if (catalogChanges) this.applyCatalogChanges(catalogChanges)
       if (state) this.writeInterpreterState(state)
       this.db.query('UPDATE source_binding SET last_event_id=?,state=?,attention_code=NULL,updated_at=? WHERE singleton=1').run(upstreamCursor, 'live', now)
       return sequences
     })()
+  }
+
+  private applyCatalogChanges(changes: CatalogChanges) {
+    const generation = Number((this.db.query('SELECT snapshot_generation FROM source_binding WHERE singleton=1').get() as any)?.snapshot_generation ?? 0)
+    const upsert = this.db.query(`INSERT INTO session_catalog(id,title,machine_name,updated_at,active,snapshot_generation)
+      VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+      title=excluded.title,machine_name=excluded.machine_name,updated_at=excluded.updated_at,
+      active=excluded.active,snapshot_generation=excluded.snapshot_generation`)
+    for (const item of changes.upsert ?? []) upsert.run(
+      item.id,
+      item.title?.trim() || 'HAPI session',
+      item.machineName ?? null,
+      Number.isSafeInteger(item.updatedAt) ? item.updatedAt! : 0,
+      item.active ? 1 : 0,
+      generation
+    )
+    const remove = this.db.query('DELETE FROM session_catalog WHERE id=?')
+    for (const id of changes.remove ?? []) remove.run(id)
   }
 
   private insertCandidates(candidates: Candidate[], targetKinds: ConsumerKind[], now: number): number[] {

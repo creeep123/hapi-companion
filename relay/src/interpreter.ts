@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { CompanionEvent, OfficialMessage, OfficialRequest, OfficialSession, OfficialSyncEvent } from './types'
+import { isOfficialSession, type CompanionEvent, type OfficialMessage, type OfficialRequest, type OfficialSession, type OfficialSyncEvent } from './types'
 
 const INPUT_TOOLS = new Set(['request_user_input', 'AskUserQuestion', 'ask_user_question', 'CursorAskQuestion'])
 const COMPLETE = new Set(['completed', 'complete', 'done', 'success'])
@@ -11,11 +11,15 @@ type Snapshot = {
   messageEpoch?: number; messageAt?: number; messageSeq?: number
 }
 export type Candidate = { sourceKey: string; event: CompanionEvent }
-export type InterpreterState = { version: 1; sessions: Array<{
+export type SessionUpdateResult =
+  | { status: 'applied'; candidates: Candidate[]; session: OfficialSession }
+  | { status: 'needs-detail' }
+export type InterpreterSessionState = {
   session: OfficialSession; requestIds: string[]; turnStartedAt?: number
   frozenDurationMs?: number; lastReadyAt?: number; lastTaskCompletionAt?: number
   messageEpoch?: number; messageAt?: number; messageSeq?: number
-}> }
+}
+export type InterpreterState = { version: 1; sessions: InterpreterSessionState[] }
 
 export class EventInterpreter {
   private snapshots = new Map<string, Snapshot>()
@@ -30,7 +34,11 @@ export class EventInterpreter {
   }
 
   exportState(): InterpreterState {
-    return { version: 1, sessions: [...this.snapshots.values()].map(snapshot => ({
+    return { version: 1, sessions: [...this.snapshots.values()].map(snapshot => this.persistSnapshot(snapshot)) }
+  }
+
+  private persistSnapshot(snapshot: Snapshot): InterpreterSessionState {
+    return {
       session: persistedSession(snapshot.session), requestIds: [...snapshot.requestIds],
       ...(snapshot.turnStartedAt !== undefined ? { turnStartedAt: snapshot.turnStartedAt } : {}),
       ...(snapshot.frozenDurationMs !== undefined ? { frozenDurationMs: snapshot.frozenDurationMs } : {}),
@@ -39,7 +47,7 @@ export class EventInterpreter {
       , ...(snapshot.messageEpoch !== undefined ? { messageEpoch: snapshot.messageEpoch } : {})
       , ...(snapshot.messageAt !== undefined ? { messageAt: snapshot.messageAt } : {})
       , ...(snapshot.messageSeq !== undefined ? { messageSeq: snapshot.messageSeq } : {})
-    })) }
+    }
   }
 
   clearMessageWatermarks(): void {
@@ -50,17 +58,62 @@ export class EventInterpreter {
     }
   }
 
-  sessionPatchNeedsRefresh(sessionId: string, data: unknown): boolean {
+  /**
+   * Reduce the official HAPI structured SessionPatch into the local aggregate.
+   * This mirrors the official Web reducer: scalar fields apply in place and
+   * metadata/agentState apply only when their version is newer. Unknown wire
+   * shapes are returned to the source adapter for one targeted detail fetch.
+   */
+  observeSessionUpdate(sessionId: string, data: unknown, sourceIdentity: string): SessionUpdateResult {
     const snapshot = this.snapshots.get(sessionId)
-    if (!snapshot || !isObject(data)) return true
-    const ignored = new Set(['updatedAt', 'activeAt', 'collaborationMode', 'copilotAgentMode', 'effort', 'model', 'modelReasoningEffort', 'permissionMode', 'serviceTier'])
-    const compared = new Set(['active', 'thinking', 'activeTurnStartedAt'])
-    for (const [key, value] of Object.entries(data)) {
-      if (ignored.has(key)) continue
-      if (compared.has(key)) { if ((snapshot.session as Record<string, unknown>)[key] !== value) return true; continue }
-      return true
+    if (!isObject(data) || Object.keys(data).length === 0) return { status: 'needs-detail' }
+
+    // Some legacy/full-session broadcasts use Session rather than SessionPatch.
+    if (typeof data.id === 'string') {
+      return this.observeSessionSnapshot(sessionId, data, sourceIdentity)
     }
-    return false
+    if (!snapshot) return { status: 'needs-detail' }
+
+    const known = new Set([
+      'active', 'thinking', 'activeTurnStartedAt', 'activeAt', 'updatedAt',
+      'metadata', 'agentState', 'todos', 'teamState', 'model',
+      'modelReasoningEffort', 'effort', 'serviceTier', 'permissionMode',
+      'collaborationMode', 'copilotAgentMode', 'backgroundTaskCount',
+      'scratchlistUpdatedAt'
+    ])
+    if (Object.keys(data).some(key => !known.has(key))) return { status: 'needs-detail' }
+    if (!validOptionalBoolean(data.active) || !validOptionalBoolean(data.thinking)) return { status: 'needs-detail' }
+    if (!validOptionalTime(data.activeAt) || !validOptionalTime(data.updatedAt)) return { status: 'needs-detail' }
+    if (data.activeTurnStartedAt !== undefined && data.activeTurnStartedAt !== null && !validTime(data.activeTurnStartedAt)) return { status: 'needs-detail' }
+    if (data.metadata !== undefined && (!isVersionedValue(data.metadata) || !isMetadataValue(data.metadata.value))) return { status: 'needs-detail' }
+    if (data.agentState !== undefined && (!isVersionedValue(data.agentState) || !isAgentStateValue(data.agentState.value))) return { status: 'needs-detail' }
+    if (data.todos !== undefined && !isVersionedValue(data.todos)) return { status: 'needs-detail' }
+    if (data.teamState !== undefined && !isVersionedValue(data.teamState)) return { status: 'needs-detail' }
+
+    const next: OfficialSession = { ...snapshot.session }
+    if (data.active !== undefined) next.active = data.active
+    if (data.thinking !== undefined) next.thinking = data.thinking
+    if (data.activeTurnStartedAt !== undefined) next.activeTurnStartedAt = data.activeTurnStartedAt
+    if (data.activeAt !== undefined) next.activeAt = data.activeAt
+    if (data.updatedAt !== undefined) next.updatedAt = Math.max(next.updatedAt ?? 0, data.updatedAt)
+
+    if (data.metadata !== undefined && data.metadata.version > (next.metadataVersion ?? -1)) {
+      next.metadata = data.metadata.value
+      next.metadataVersion = data.metadata.version
+    }
+    if (data.agentState !== undefined && data.agentState.version > (next.agentStateVersion ?? -1)) {
+      next.agentState = data.agentState.value as OfficialSession['agentState']
+      next.agentStateVersion = data.agentState.version
+    }
+
+    const candidates = this.observeSession(next, sourceIdentity)
+    return { status: 'applied', candidates, session: next }
+  }
+
+  observeSessionSnapshot(sessionId: string, data: unknown, sourceIdentity: string): SessionUpdateResult {
+    if (!isOfficialSession(data, sessionId)) return { status: 'needs-detail' }
+    const session = { ...data }
+    return { status: 'applied', candidates: this.observeSession(session, sourceIdentity), session }
   }
 
   enrichReady(candidates: Candidate[], messages: OfficialMessage[]): Candidate[] {
@@ -204,13 +257,17 @@ function persistedSession(session: OfficialSession): OfficialSession {
     ...(session.active !== undefined ? { active: session.active } : {}),
     ...(session.thinking !== undefined ? { thinking: session.thinking } : {}),
     ...(session.activeTurnStartedAt !== undefined ? { activeTurnStartedAt: session.activeTurnStartedAt } : {}),
+    ...(session.activeAt !== undefined ? { activeAt: session.activeAt } : {}),
+    ...(session.updatedAt !== undefined ? { updatedAt: session.updatedAt } : {}),
     ...(session.machineId !== undefined ? { machineId: session.machineId } : {}),
-    ...(session.metadata ? { metadata: {
+    ...(session.metadataVersion !== undefined ? { metadataVersion: session.metadataVersion } : {}),
+    ...(session.agentStateVersion !== undefined ? { agentStateVersion: session.agentStateVersion } : {}),
+    ...(session.metadata === null ? { metadata: null } : session.metadata ? { metadata: {
       ...(session.metadata.name !== undefined ? { name: session.metadata.name } : {}),
       ...(session.metadata.machineId !== undefined ? { machineId: session.metadata.machineId } : {}),
       ...(session.metadata.flavor !== undefined ? { flavor: session.metadata.flavor } : {})
     } } : {}),
-    ...(pending.length ? { agentState: { requests: pending } } : {})
+    ...(pending.length || session.agentState !== undefined ? { agentState: session.agentState === null ? null : { requests: pending } } : {})
   }
 }
 function sessionName(session: OfficialSession) { return session.metadata?.name?.trim() || session.title?.trim() || 'HAPI session' }
@@ -218,4 +275,24 @@ function agentName(session: OfficialSession) { const value = session.metadata?.f
 function truncate(value: string, limit: number) { const text = value.trim(); return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 3)).trimEnd()}...` }
 function deterministicUUID(value: string): string { const h = createHash('sha256').update(value).digest('hex'); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}` }
 function validTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 }
+function validOptionalTime(value: unknown): value is number | undefined { return value === undefined || validTime(value) }
+function validOptionalBoolean(value: unknown): value is boolean | undefined { return value === undefined || typeof value === 'boolean' }
+function isVersionedValue(value: unknown): value is { version: number; value: any } {
+  return isObject(value) && validTime(value.version) && Object.prototype.hasOwnProperty.call(value, 'value')
+}
+function isMetadataValue(value: unknown): boolean {
+  if (value === null) return true
+  if (!isObject(value)) return false
+  return ['name', 'machineId', 'path'].every(key => value[key] === undefined || typeof value[key] === 'string')
+    && (value.flavor === undefined || value.flavor === null || typeof value.flavor === 'string')
+}
+function isAgentStateValue(value: unknown): boolean {
+  if (value === null) return true
+  if (!isObject(value)) return false
+  const pending = value.requests
+  if (pending === undefined) return true
+  if (Array.isArray(pending)) return pending.every(request => isObject(request) && typeof request.id === 'string' && (request.tool === undefined || typeof request.tool === 'string'))
+  if (!isObject(pending)) return false
+  return Object.values(pending).every(request => isObject(request) && (request.tool === undefined || typeof request.tool === 'string'))
+}
 const isObject = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)

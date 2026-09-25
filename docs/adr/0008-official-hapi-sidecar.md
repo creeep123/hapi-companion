@@ -11,7 +11,7 @@ HAPI v0.30.7 already exposes namespace-filtered session REST APIs, a global auth
 
 ## Decision
 
-Build a Companion-owned Sidecar that consumes one official HAPI SSE connection per namespace and uses official REST calls to enrich and reconcile session state. Convert proven transitions into the existing version 1 Companion event contract and transactionally store them in a Sidecar-owned SQLite outbox. Deliver to Mac and ntfy through independent consumers and cursors.
+Build a Companion-owned Sidecar that consumes one official HAPI SSE connection per namespace. Treat HAPI's structured `session-updated` payload as the authoritative incremental state stream: apply scalar fields in place and apply `metadata` and `agentState` only when their version is newer, following the same rule as the official Web client. REST supplies the initial/gap snapshot and the bounded preview for a real ready notification; it is not a per-patch invalidation path. Convert proven transitions into the existing version 1 Companion event contract and transactionally store them in a Sidecar-owned SQLite outbox. Deliver to Mac and ntfy through independent consumers and cursors.
 
 On `resume=gap`, establish a current-state baseline from catalog and required session details while buffering new SSE frames. Recover pending input/permission requests from that state, clear legacy message watermarks, and apply buffered frames in order using their official SSE IDs. Do not scan message history for old ready/task events; this keeps recovery bounded for arbitrarily long sessions and makes the accepted loss boundary explicit.
 
@@ -19,11 +19,15 @@ Keep the public HAPI PWA origin separate from the Sidecar API origin. Rebuild ex
 
 Use the current patch path during development and shadow verification. Cut over with a single-source barrier; never send from patched and Sidecar paths concurrently. Patch retirement requires separate production authorization and Safe Updater changes.
 
+For a bounded Phase B comparison, an optional Sidecar-owned, private, fsynced transition journal records connection verdicts and live heartbeats without content or identifiers. The offline comparator derives continuity from those source transitions and fails closed on a gap, disconnect, restart, missing end heartbeat or invalid journal. The journal is a local operational evidence aid, not a durable HAPI event source or proof against an operator who controls the file. It requires a separately reviewed Sidecar build and explicit VM authorization; it is absent from the frozen alpha.9 artifact.
+
 ## Why
 
 This removes routine source-level coupling to HAPI releases while retaining live delivery and durable behavior after observation. A dedicated source/interpreter/store boundary localizes the remaining compatibility work to official API semantics. Independent consumers prevent a phone provider outage from delaying Mac alerts, or a sleeping Mac from delaying phone alerts.
 
 SQLite supplies the atomic relationship between source cursor, semantic deduplication, canonical event and per-consumer delivery. The prior JSON ledger cannot safely express independent cursors and rewrites the whole state file per event.
+
+High-frequency patches remain in the interpreter's in-memory projection. The Sidecar durably commits notification-producing transitions immediately and batches cursor/catalog checkpoints for non-notifying patches. A crash can replay the uncommitted tail; official event IDs, request IDs and version watermarks make that replay idempotent. The Sidecar never rewrites the full catalog or interpreter checkpoint merely because one session's metadata changed.
 
 The existing `0600` JSON store remains for low-frequency management and ntfy configuration, including the write-only topic. This keeps deployed pairing/configuration compatible and avoids a secret-copy migration. SQLite replaces only the event ledger, source cursor, catalog and per-consumer delivery state; those values share the transactions that require atomicity.
 
@@ -39,6 +43,7 @@ The official source credential is installed only through a VM-local operation. P
 - Reaching the storage ceiling closes the official stream at the last committed cursor until checkpoint/retention recovery succeeds; frames are never accumulated in memory.
 - A HAPI replay gap can hide a ready/task event even when its message remains in history; current pending input/permission requests are still recovered from session state.
 - HAPI event semantic changes may require an adapter update even when schemas remain syntactically compatible.
+- The Sidecar deliberately accepts the product owner's loss boundary: after a Hub restart or unrecoverable replay gap, any number of transient ready/task observations can be absent. It does not add transcript polling or a durable upstream journal to eliminate that exceptional case.
 - The existing Mobile Relay becomes the operational base, but its serial engine is replaced rather than extended.
 
 ## Alternatives considered

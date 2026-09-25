@@ -3,11 +3,11 @@
 **Last updated:** 2026-09-25
 **Owner:** creeep123  
 **Canonical integration branch:** `main`  
-**Current posture:** v0.5.1 is publicly released and installed on this Mac. Production runs the accepted patched HAPI v0.30.7/schema-v27 build including the Linux loopback-TCP compatibility fix. The patched Hub and live Relay remain authoritative. V0.6 alpha.8 passed correctness, forced-gap, reconnect and real-ready parity gates, but failed the production resource gate under active HAPI traffic. The private shadow is stopped and disabled, its database and binary pointer are rolled back to alpha.5, and V0.6 is paused rather than adding another optimization layer.
+**当前状态：** Mac 上的 v0.5.1 已发布并安装。服务器仍用经过验收的 HAPI 通知补丁，以及现役手机通知转发程序（Relay）。独立通知服务 alpha.9 已通过本地测试，减少了先前版本过于频繁的读取和写盘；它在 VM 上的资源占用和真实事件表现尚未验收。该服务目前停止，下一步需单独批准一次最长 30 分钟的旁路观察：只接收事件，不发送通知。
 
 ## Active architecture migration — V0.6 official-HAPI Sidecar
 
-The product owner accepted the narrow reliability tradeoff: after an official SSE replay gap, any ready/task event outside available replay may be missed even if its message remains in history. Current pending input/permission requests are recoverable from session state. Alpha.8 proved this bounded recovery, but official HAPI emits frequent full metadata patches during active work. Safely treating those patches as meaningful caused repeated session/catalog reconciliation and measured about 3.7% of one CPU core, 0.21 MB/s writes and roughly 92 filesystem syncs per second. Distinguishing every metadata mutation without missing product-significant changes would add more inference and state complexity, so the agreed stop rule applies. Keep the evidence and implementation for a future upstream event interface; continue using the proven patched transport now. [Technical specification](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md); [ADR 0008](../adr/0008-official-hapi-sidecar.md); [candidate runbook](../deployments/V0_6_OFFICIAL_HAPI_SIDECAR_RUNBOOK.md); executable issue: `.scratch/v0.6-official-hapi-sidecar/001-design-and-implementation.md`.
+HAPI 官方只短暂保留事件记录。服务器重启或断线太久时，独立服务可能拿不到那段记录，从而漏掉完成提醒；漏掉多少没有固定上限，产品负责人已接受这一边界。alpha.9 的第一次 VM 观察只验证资源、断线恢复和至少一条“助手完成一轮回复”（ready）事件，属于第二阶段的**有限验证**。规范中其他四类真实事件的对照还没完成，所以这次即使通过，也不能宣称完整验收或切换 Mac、手机通知。后续的五类提醒对照工具已在本地用假数据验证；为了可靠判断中途是否断线，本地新版还加入了只记录连接变化和心跳的私人记录文件。这个文件会增加磁盘写入；全范围审查发现的落盘确认和中止后排队事件问题已在本地修复并复审通过，但尚未测量 VM 资源开销。具体路径、内容、清理和回退已写入方案。它不在已冻结的 alpha.9 中，必须另做新版验收并取得明确部署授权。生产继续使用现有通知路径。[技术规范](../specs/V0_6_OFFICIAL_HAPI_SIDECAR.md)、[架构决定](../adr/0008-official-hapi-sidecar.md)、[启动前清单](../deployments/V0_6_ALPHA9_SHADOW_PRESTART_CHECKLIST.md)、[五类提醒验收方案](../deployments/V0_6_PHASE_B_FIVE_KIND_CANARY.md)。
 
 ## Released hotfix — V0.5.1 single instance
 
@@ -133,7 +133,7 @@ No payment, email, storage provider, analytics, advertising, or AI-provider SDK 
 | V0.2 notification settings | Released | v0.2.2 accepted, published and installed; see deployment evidence |
 | V0.4 Android notifications | Production acceptance | v0.4.0 exact-session delivery is live and phone-tested; v0.4.1 matching title/summary mode awaits Relay/Mac upgrade and a real notification check |
 | HAPI 0.30.7 compatibility | Done | immutable patch and Linux transport fix are pinned, deployed and verified by Safe Updater |
-| V0.6 official-HAPI Sidecar | Paused after alpha.8 gate | correctness passes, resource gate fails under active metadata traffic; shadow is stopped/disabled and no alpha.9 is planned |
+| V0.6 official-HAPI Sidecar | Reviewed local alpha.9 candidate | structured-patch reducer, 178 Relay tests, 75 Mac tests, official 116-test/real-process gate and Linux package smoke pass; final reviews pass and shadow stays stopped pending the VM resource gate |
 | V1 signed distribution | Backlog | Developer ID signed and notarized release is reproducible |
 
 ## 6. Decisions
@@ -178,7 +178,7 @@ Latest fresh-clone verification: remote `main` at `2752fa5ad9fb7b8515ba27d35535a
 | Backlog | Ready | In progress | Review | Done |
 |---|---|---|---|---|
 | signed/notarized release | clean-machine install | — | — | v0.1.0 source-first release; V0.6 evidence retained and safely paused |
-| upstream Hub proposal | — | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
+| upstream Hub proposal | V0.6 structured-patch reducer | — | second-Mac visual acceptance | Control Panel and Signal Buddy brand |
 
 ## Mac update hosting
 
