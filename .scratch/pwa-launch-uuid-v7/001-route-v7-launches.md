@@ -1,6 +1,6 @@
 ---
 title: Accept UUID v7 notification launches in the HAPI PWA
-status: awaiting-updater-handoff
+status: awaiting-updater-pin-gates
 owner: Companion
 version: V0.5 hotfix
 specs:
@@ -34,3 +34,7 @@ No Hub API, DB migration, Mac client, Sidecar delivery, production deployment or
 ## Evidence
 
 The new targeted test failed twice before the handler fix (URL parser returned null; SPA router was not called), then passed. Root test, typecheck and build passed in a clean baseline plus patched checkout. The new patch SHA-256 is `0134292bf4f6dd2743bf17ad991c1be6ce61515041757447015ee97d67586c68`; the old production pin is `2e75aa3ce6eaf7d965639d48feff3f0dc7ff4352306b48a1c28de1a5d35f5757`.
+
+## Updater handoff
+
+Companion PR #41 and patch commit `adc9fa1b563ed7c56e072f14631956d33268c63f` were sent to the canonical updater peer on 2026-09-25. The owner acknowledged that they would record the handoff and check the existing pin/pause constraints. They explicitly kept production and automatic upgrades unchanged and treated updater pin changes and candidate tests as pending authorization. Updater commit, pin acceptance, candidate gates and production PWA click remain open; the old production pin stays authoritative until the updater reports otherwise.
