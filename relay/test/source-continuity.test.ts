@@ -66,4 +66,13 @@ describe('source continuity journal', () => {
     expect(readContinuityEvidence(path, 2000, 4000)).toBeUndefined()
     journal.close()
   })
+  test('rejects a long heartbeat silence even when a late end heartbeat exists', async () => {
+    const path = await fixture(); let clock = 1000
+    const journal = new SourceContinuityJournal(path, () => clock)
+    journal.record('connecting'); journal.record('connected-ok'); journal.record('live')
+    clock = 6000; journal.record('heartbeat')
+    clock = 25_000; journal.record('heartbeat')
+    expect(readContinuityEvidence(path, 2000, 24_000)).toBeUndefined()
+    journal.close()
+  })
 })

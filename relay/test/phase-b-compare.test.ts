@@ -111,6 +111,7 @@ describe('offline Phase B event comparator', () => {
     let clock = options().from - 100
     const journal = new SourceContinuityJournal(continuityPath, () => clock)
     journal.record('connecting'); journal.record('connected-ok'); journal.record('live')
+    clock = options().from + 5000; journal.record('heartbeat')
     clock = options().through + 100; journal.record('heartbeat'); journal.close()
     await chmod(f.sidecarPath, 0o600); await chmod(f.hubPath, 0o600)
     const script = resolve(import.meta.dir, '../src/phase-b-compare-cli.ts')

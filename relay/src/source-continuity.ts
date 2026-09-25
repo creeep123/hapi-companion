@@ -90,7 +90,9 @@ export function readContinuityEvidence(path: string, from: number, through: numb
     if (following.some(entry => entry.runId !== live.runId || entry.kind !== 'heartbeat')) return undefined
     const heartbeat = entries.find(entry => entry.seq > live.seq && entry.runId === live.runId && entry.kind === 'heartbeat' && entry.at >= through && entry.at <= through + 10_000)
     if (!heartbeat) return undefined
-    if (entries.some(entry => entry.seq > live.seq && entry.seq < heartbeat.seq && (entry.runId !== live.runId || entry.kind !== 'heartbeat'))) return undefined
+    const covered = entries.filter(entry => entry.seq > live.seq && entry.seq <= heartbeat.seq)
+    if (covered.some(entry => entry.runId !== live.runId || entry.kind !== 'heartbeat')) return undefined
+    if (covered.some((entry, index) => entry.at - (index ? covered[index - 1]!.at : live.at) > 10_000)) return undefined
     return { sourceState: 'live', gapCount: 0, observedFrom: live.at, observedThrough: heartbeat.at }
   } catch { return undefined }
 }
